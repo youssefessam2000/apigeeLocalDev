@@ -1,5 +1,9 @@
 <TargetEndpoint name="default">
   <HTTPTargetConnection>
-     <URL>https://mocktarget.apigee.net/xml</URL>
+    <SSLInfo>
+      <Enabled>true</Enabled>
+      <Enforce>true</Enforce>
+    </SSLInfo>
+    <URL>https://mocktarget.apigee.net/xml</URL>
   </HTTPTargetConnection>
 </TargetEndpoint>

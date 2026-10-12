@@ -5,10 +5,10 @@
         <Name>verify-api-key</Name>
       </Step>
       <Step>
-        <Name>remove-query-param-apikey</Name>
+        <Name>AM-RemoveApiKeyParam</Name>
       </Step>
       <Step>
-        <Name>impose-quota</Name>
+        <Name>Q-ImposeQuota</Name>
       </Step>
     </Request>
     <Response>
@@ -18,7 +18,7 @@
     </Response>
   </PreFlow>
   <HTTPProxyConnection>
-    <BasePath>helloworld</BasePath>
+    <BasePath>/helloworld</BasePath>
   </HTTPProxyConnection>
   <RouteRule name="default-route">
     <TargetEndpoint>default</TargetEndpoint>

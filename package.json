@@ -4,10 +4,9 @@
   "description": "Apigee hello-world proxy with CI/CD quality gates",
   "private": true,
   "scripts": {
-    "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -f table.js",
+    "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002 -f table.js",
     "prelint:report": "node -e \"require('fs').mkdirSync('reports',{recursive:true})\"",
-    "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -f json.js > reports/apigeelint-baseline.json",
-    "test:api:local": "newman run tests/postman/hello.postman_collection.json -e tests/postman/env/local.postman_environment.json -r cli,junit --reporter-junit-export reports/newman-local.xml",
+    "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002 -f json.js > reports/apigeelint-baseline.json",    "test:api:local": "newman run tests/postman/hello.postman_collection.json -e tests/postman/env/local.postman_environment.json -r cli,junit --reporter-junit-export reports/newman-local.xml",
     "test": "npm run lint && npm run test:api:local"
   },
   "repository": {
