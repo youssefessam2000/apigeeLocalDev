@@ -1,0 +1,17 @@
+# Dependencies
+node_modules/
+
+# Generated output
+reports/
+target/
+
+# Secrets & local config
+.env
+*.key
+*.pem
+*-credentials.json
+*service-account*.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
