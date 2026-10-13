@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example.apigee</groupId>
+  <artifactId>helloworld</artifactId>
+  <version>1.0.0</version>
+  <packaging>pom</packaging>
+
+  <name>helloworld Apigee Proxy</name>
+  <description>CI/CD POC — helloworld proxy with API key, quota and XML-to-JSON</description>
+
+  <properties>
+    <apigee.deploy.plugin.version>2.4.4</apigee.deploy.plugin.version>
+    <!-- Override on command line: -Dapigee.org=my-org -->
+    <apigee.org>${env.APIGEE_ORG}</apigee.org>
+    <apigee.env>${env.APIGEE_ENV}</apigee.env>
+    <!-- Use access token from: gcloud auth print-access-token -->
+    <apigee.bearer>${env.APIGEE_TOKEN}</apigee.bearer>
+    <apigee.options>override</apigee.options>
+    <apigee.apitype>apiproxy</apigee.apitype>
+    <apigee.proxy.directory>src/main/apigee/apiproxies/helloworld</apigee.proxy.directory>
+  </properties>
+
+  <profiles>
+    <!-- =========================================================
+         dev  — local Apigee Emulator (no real deployment)
+         Usage: mvn install -P dev
+         ========================================================= -->
+    <profile>
+      <id>dev</id>
+      <properties>
+        <apigee.env>dev</apigee.env>
+        <apigee.hosturl>http://localhost:8998</apigee.hosturl>
+        <apigee.options>override</apigee.options>
+      </properties>
+    </profile>
+
+    <!-- =========================================================
+         nonprod — Apigee X non-production environment
+         Usage:
+           export APIGEE_ORG=my-org
+           export APIGEE_ENV=dev
+           export APIGEE_TOKEN=$(gcloud auth print-access-token)
+           mvn install -P nonprod
+         ========================================================= -->
+    <profile>
+      <id>nonprod</id>
+      <properties>
+        <apigee.hosturl>https://apigee.googleapis.com</apigee.hosturl>
+        <apigee.options>override</apigee.options>
+      </properties>
+    </profile>
+  </profiles>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.apigee.edge</groupId>
+        <artifactId>apigee-deploy-maven-plugin</artifactId>
+        <version>${apigee.deploy.plugin.version}</version>
+        <executions>
+          <execution>
+            <id>deploy-proxy</id>
+            <phase>install</phase>
+            <goals>
+              <goal>deploy</goal>
+            </goals>
+            <configuration>
+              <server>apigeeapi</server>
+              <org>${apigee.org}</org>
+              <env>${apigee.env}</env>
+              <hosturl>${apigee.hosturl}</hosturl>
+              <apitype>${apigee.apitype}</apitype>
+              <options>${apigee.options}</options>
+              <bearer>${apigee.bearer}</bearer>
+              <apigeeAPIVersion>googleapi</apigeeAPIVersion>
+              <buildDirectory>target</buildDirectory>
+              <directory>${apigee.proxy.directory}</directory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

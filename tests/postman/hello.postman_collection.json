@@ -1,0 +1,126 @@
+{
+  "info": {
+    "_postman_id": "helloworld-apigee-cicd-poc",
+    "name": "helloworld",
+    "description": "Functional tests for the helloworld Apigee proxy. Covers happy path and negative cases (missing/invalid API key).",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Happy path — valid API key returns 200",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', function () {",
+              "    pm.response.to.have.status(200);",
+              "});",
+              "",
+              "pm.test('Response is JSON', function () {",
+              "    pm.response.to.have.header('Content-Type');",
+              "    const ct = pm.response.headers.get('Content-Type');",
+              "    pm.expect(ct).to.include('application/json');",
+              "});",
+              "",
+              "pm.test('Response body is not empty', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body).to.be.an('object');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/helloworld?apikey={{apikey}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["helloworld"],
+          "query": [
+            {
+              "key": "apikey",
+              "value": "{{apikey}}"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Negative — missing API key returns 401",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 401', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test('Response body contains fault', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body).to.have.property('fault');",
+              "    pm.expect(body.fault).to.have.property('faultstring');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/helloworld",
+          "host": ["{{baseUrl}}"],
+          "path": ["helloworld"]
+        }
+      }
+    },
+    {
+      "name": "Negative — invalid API key returns 401",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 401', function () {",
+              "    pm.response.to.have.status(401);",
+              "});",
+              "",
+              "pm.test('Response body contains fault', function () {",
+              "    const body = pm.response.json();",
+              "    pm.expect(body).to.have.property('fault');",
+              "    pm.expect(body.fault).to.have.property('faultstring');",
+              "});",
+              "",
+              "pm.test('Error code indicates invalid API key', function () {",
+              "    const body = pm.response.json();",
+              "    const errorCode = body.fault.detail.errorcode;",
+              "    pm.expect(errorCode).to.include('ApiKey');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/helloworld?apikey=invalid-key-000",
+          "host": ["{{baseUrl}}"],
+          "path": ["helloworld"],
+          "query": [
+            {
+              "key": "apikey",
+              "value": "invalid-key-000"
+            }
+          ]
+        }
+      }
+    }
+  ]
+}

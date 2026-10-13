@@ -109,6 +109,66 @@ npm run lint:report
 
 Output: `reports/apigeelint-baseline.json`
 
+### Run functional tests (Newman)
+
+Update `tests/postman/env/local.postman_environment.json` with your emulator API key, then:
+
+```bash
+npm run test:api:local
+```
+
+Output: `reports/newman-local.xml` (JUnit format)
+
+### Run all quality gates
+
+```bash
+npm test
+```
+
+This runs lint first, then the Newman test suite. The command exits non-zero if either step fails.
+
+---
+
+## Quality Gates
+
+| Gate | Tool | Threshold |
+|------|------|-----------|
+| Static analysis | apigeelint | Zero errors (exit code 0) |
+| Functional tests | Newman | All assertions pass (exit code 0) |
+| JS unit tests | N/A | No JS resources in this proxy |
+
+**Pipeline rule:** Any gate failure must stop the build. Do not suppress failures without a documented reason.
+
+---
+
+## Packaging & Deployment (Maven)
+
+The proxy is packaged and deployed using the [Apigee Deploy Maven Plugin v2.x](https://github.com/apigee/apigee-deploy-maven-plugin).
+
+### Prerequisites
+
+- Java 11+
+- Maven 3.6+
+
+### Deploy to non-production Apigee X
+
+```bash
+export APIGEE_ORG=your-org-name
+export APIGEE_ENV=dev
+export APIGEE_TOKEN=$(gcloud auth print-access-token)
+
+mvn install -P nonprod
+```
+
+### Available Maven profiles
+
+| Profile | Target | Notes |
+|---------|--------|-------|
+| `dev` | Local emulator (`localhost:8998`) | For local packaging validation |
+| `nonprod` | Apigee X non-production | Requires `APIGEE_ORG`, `APIGEE_ENV`, `APIGEE_TOKEN` env vars |
+
+**Security:** Never commit credentials or tokens. Always use environment variables or workload identity federation.
+
 ---
 
 ## Project Structure
@@ -123,8 +183,13 @@ myapigeeworkspace/
 │   │   │   └── targets/           # Target endpoint config
 │   │   └── environments/dev/      # Environment-level config
 │   └── tests/mytestbundle/        # Local test data (product, developer, app)
+├── tests/postman/
+│   ├── hello.postman_collection.json   # Postman collection (happy + negative tests)
+│   └── env/
+│       └── local.postman_environment.json  # Local emulator environment vars
 ├── reports/                       # Generated lint/test reports (git-ignored)
 ├── target/                        # Maven build output (git-ignored)
+├── pom.xml                        # Maven build & deployment config
 ├── package.json                   # Node.js scripts and dependencies
 └── README.md                      # This file
 ```
