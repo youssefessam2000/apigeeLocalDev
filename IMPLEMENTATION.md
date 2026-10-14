@@ -925,8 +925,11 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 |-----|---------|-----------|------------|-------|
 | 1 | Push `820965d` (workflow added) | ✅ Lint 0 errors, bundle packaged and stored | ❌ Google login ✅, import ✅ (revision 3), deploy `403` | Missing deploy permission (8.14); fixed by adding Apigee Environment Admin |
 | 2 | Push `5aa621f` (documenting 8.14) | ✅ | ✅ Google login, import + deploy **revision 4** (`PROGRESSING` 08:38:07 → `READY` 08:38:29), API tests passed | **First successful end-to-end run** |
-| 3 | Push `6c22dc9` (adds `paths-ignore`) | ✅ | ✅ Deployed **revision 5** (`PROGRESSING` 08:40:06 → `READY` 08:40:27) | Workflow file changed, so this run was not skipped |
-| — | Push of the commit recording run 3 (docs only) | skipped | skipped | Expected: no run, no new revision (`paths-ignore`) |
+| 1 (re-run) | **Re-run failed jobs** on run 1 (after 8.14 fix) | — (reused) | ✅ Deployed run 1's stored bundle as **revision 5** (created 08:39:45) | Shows a stored artifact can be redeployed without rebuilding |
+| 3 | Push `6c22dc9` (adds `paths-ignore`) | ✅ | ✅ Deployed **revision 6** (created 08:41:18, `READY`) | Workflow file changed, so this run was not skipped |
+| — | Push `65f0c5e` (docs only) | skipped | skipped | ✅ No run; no new revision appeared in the following 6 minutes (`paths-ignore` works) |
+
+**Correction:** an earlier version of this table attributed revision 5 to run 3. Revision timestamps show revision 5 was created at 08:39:45, before commit `6c22dc9` existed (08:39:56); it came from the manual re-run of run 1. Run 3 created revision 6.
 
 Confirmed independently from the Apigee side: revision 4 was created and deployed by the pipeline and replaced revision 2 on `eval`; running the same API tests against it locally gave 3 requests, 8 assertions, 0 failures. Both jobs were green in GitHub Actions, with the bundle, lint report and Newman report stored as run artifacts.
 
@@ -941,7 +944,31 @@ Confirmed independently from the Apigee side: revision 4 was created and deploye
 
 **Improvement after run 2:** every push to `main` deployed a new revision, even documentation-only commits. The workflow now has `paths-ignore: ['**.md', '**.csv']` on `push` and `pull_request`, so changes that only touch documentation do not run the pipeline. A manual run (**Actions → CI → Run workflow**) is still possible at any time.
 
-### 9.9 Day 3 summary
+### 9.9 Red/green quality gate on a pull request
+
+**Why:** the task plan asks for *"Red/green CI behavior demonstrated"* and *"Keep deployment out of untrusted pull-request jobs"*. Run 1 was red because of a deploy permission, not because a quality gate caught a problem, and the pull-request trigger had never run.
+
+**What was done:**
+
+| # | Action | Commit | CI result |
+|---|--------|--------|-----------|
+| 1 | Created temporary branch `demo/quality-gate-red-green`; added a flow step referencing a policy that does not exist (`AM-DoesNotExist`) | `14f30e8` | — (pushes to other branches do not trigger CI) |
+| 2 | Opened a pull request into `main` ("Demo: quality gate red/green (do not merge)") | — | ❌ **Red**: *Lint proxy (apigeelint)* failed with error **BN010 `Missing policy "AM-DoesNotExist"`**, exit code 1; packaging and artifact steps did not run |
+| 3 | Pushed the fix (removed the step) to the same branch | `14b2bb4` | ✅ **Green**: lint 0 errors, bundle packaged and stored |
+| 4 | Closed the pull request **without merging**; deleted the branch (local and remote) | — | — |
+
+**How the PR went from red to green automatically:**
+1. The workflow subscribes to `pull_request` events for `main`. Opening the PR started a run on its newest commit (`14f30e8`); lint exited 1, so GitHub stopped the job and marked the commit red.
+2. Pushing `14b2bb4` to the PR's branch fired a new pull request event (`synchronize`), which started a new run on the new commit without any manual action.
+3. A PR's check status always reflects its newest commit, so the PR turned green.
+
+**Deployment stayed out of pull requests:** the `deploy` job only runs for `push` and `workflow_dispatch` events, so it did not run for either PR run. Confirmed in Apigee: revisions stayed at 1–6 throughout.
+
+**Note:** removing the `<APIKey>` element from `verify-api-key` was considered as the deliberate lint error, but rejected because it weakens the proxy's security even on a temporary branch. A missing-policy reference is harmless and still a real lint error.
+
+**In a team setup**, enabling branch protection on `main` (Settings → Branches → require the *CI / Lint and package* check) makes GitHub block merging while the check is red.
+
+### 9.10 Day 3 summary
 
 | # | Day 3 task (task plan) | Status | Evidence |
 |---|------------------------|--------|----------|
@@ -949,12 +976,10 @@ Confirmed independently from the Apigee side: revision 4 was created and deploye
 | 2 | Deploy the proxy | ✅ | Maven deploy to eval, revision 1 `READY` (9.2) |
 | 3 | Run post-deploy functional tests | ✅ | Newman against eval, 8/8 (9.3) |
 | 4 | Test failure handling | ✅ | Wrong expected status → exit 1; restored → exit 0 (9.4) |
-| 5 | Create CI workflow | ✅ | `.github/workflows/ci.yml` on pull requests, pushes to `main`, manual runs (9.6) |
-| 6 | Wire in automated quality gates | ✅ | Lint and API tests are required steps; any non-zero exit stops the run (9.4, 9.6) |
-| 7 | Store build artifact | ✅ | Bundle + `build-info.json` uploaded per run, 30-day retention (9.6) |
+| 5 | Create CI workflow | ✅ | `.github/workflows/ci.yml`; triggered by pushes to `main` (runs 1–3) and pull requests (9.9) |
+| 6 | Wire in automated quality gates | ✅ | Red/green demonstrated on a pull request: lint error → red, fix → green; deploy never runs for PRs (9.9) |
+| 7 | Store build artifact | ✅ | Bundle + `build-info.json` uploaded per run, 30-day retention; stored bundle redeployed by a re-run as revision 5 (9.6, 9.8) |
 | 8 | Run end-to-end pipeline | ✅ | Run 2: lint → package → artifact → deploy revision 4 → API tests (9.8) |
-| 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
-| 6 | Push a change and observe the full pipeline run | ⏳ |
 
 ---
 
