@@ -1,0 +1,157 @@
+# CI/CD pipeline for the helloworld Apigee proxy.
+#
+#   build  (pull requests and pushes to main)
+#     lint -> package bundle -> store bundle + build metadata as artifact
+#   deploy (pushes to main and manual runs only, after build succeeds)
+#     keyless Google login (Workload Identity Federation) -> deploy the stored
+#     bundle with the Apigee Maven plugin -> API tests against the deployed proxy
+#
+# Configuration (repo Settings -> Secrets and variables -> Actions):
+#   vars:    GCP_WIF_PROVIDER, GCP_SERVICE_ACCOUNT, APIGEE_ORG, APIGEE_ENV, APIGEE_BASE_URL
+#   secrets: APIGEE_APIKEY
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Lint and package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint proxy (apigeelint)
+        run: npm run lint
+
+      - name: Save lint report
+        if: always()
+        run: npm run lint:report
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      - name: Package proxy bundle
+        run: mvn -B package -P nonprod
+
+      - name: Write build metadata
+        run: |
+          cat > target/build-info.json <<EOF
+          {
+            "proxy": "helloworld",
+            "version": "1.0.0",
+            "commit": "${{ github.sha }}",
+            "ref": "${{ github.ref_name }}",
+            "event": "${{ github.event_name }}",
+            "run_id": "${{ github.run_id }}",
+            "run_number": "${{ github.run_number }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          }
+          EOF
+          cat target/build-info.json
+
+      - name: Store bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: helloworld-bundle-${{ github.sha }}
+          path: |
+            target/helloworld-1.0.0.zip
+            target/build-info.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Store lint report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: apigeelint-report-${{ github.sha }}
+          path: reports/apigeelint-baseline.json
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy to ${{ vars.APIGEE_ENV }} and test
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # One deployment at a time; a newer run waits instead of racing.
+    concurrency:
+      group: deploy-${{ vars.APIGEE_ENV }}
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # lets the job request a GitHub OIDC token for Workload Identity Federation
+    env:
+      APIGEE_ORG: ${{ vars.APIGEE_ORG }}
+      APIGEE_ENV: ${{ vars.APIGEE_ENV }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download bundle built by this run
+        uses: actions/download-artifact@v4
+        with:
+          name: helloworld-bundle-${{ github.sha }}
+          path: target
+
+      - name: Show bundle metadata
+        run: cat target/build-info.json && ls -l target
+
+      - name: Authenticate to Google Cloud (keyless)
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: maven
+
+      # Runs only the deploy goal, so the stored zip is deployed as-is (no rebuild).
+      - name: Deploy bundle to Apigee
+        env:
+          APIGEE_TOKEN: ${{ steps.auth.outputs.access_token }}
+        run: mvn -B -P nonprod apigee-enterprise:deploy
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: API tests against deployed proxy
+        env:
+          APIGEE_APIKEY: ${{ secrets.APIGEE_APIKEY }}
+          APIGEE_BASE_URL: ${{ vars.APIGEE_BASE_URL }}
+        run: node tests/postman/run-cloud.js eval
+
+      - name: Store test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report-${{ github.sha }}
+          path: reports/newman-eval.xml
+          if-no-files-found: ignore

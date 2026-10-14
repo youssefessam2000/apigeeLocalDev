@@ -5,7 +5,8 @@
 //
 // Usage:
 //   node tests/postman/run-cloud.js <env>     e.g. eval, stagin
-//   APIGEE_APIKEY  API key of a developer app with access to the proxy (required)
+//   APIGEE_APIKEY    API key of a developer app with access to the proxy (required)
+//   APIGEE_BASE_URL  overrides the environment file's baseUrl (optional, used by CI)
 //
 // Uses tests/postman/env/<env>.postman_environment.json and writes
 // reports/newman-<env>.xml.
@@ -39,8 +40,11 @@ const args = [
   '--env-var', `apikey=${apiKey}`,
   '-r', 'cli,junit',
   '--reporter-junit-export', `reports/newman-${envName}.xml`,
-  ...process.argv.slice(3),
 ];
+if (process.env.APIGEE_BASE_URL) {
+  args.push('--env-var', `baseUrl=${process.env.APIGEE_BASE_URL}`);
+}
+args.push(...process.argv.slice(3));
 
 const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit' });
 process.exit(result.status === null ? 1 : result.status);

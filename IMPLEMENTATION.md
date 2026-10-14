@@ -839,7 +839,55 @@ Repository → **Settings → Secrets and variables → Actions**:
 
 Only `APIGEE_APIKEY` is sensitive. The provider name and service account email are identifiers, not credentials: they are useless outside workflows from this repository. Switching the pipeline to staging later means changing `APIGEE_ENV` to `stagin` and `APIGEE_BASE_URL` to the staging hostname.
 
-### 9.6 Remaining Day 3 steps
+### 9.6 Step 5 — GitHub Actions workflow ✅
+
+**File:** `.github/workflows/ci.yml`
+
+**Triggers:** pull requests to `main`, pushes to `main`, and manual runs (**Actions → CI → Run workflow**).
+
+```
+┌──────────────── build (PRs + pushes) ────────────────┐     ┌──────── deploy (pushes to main + manual) ────────┐
+│ checkout → npm ci → npm run lint → mvn package       │     │ download bundle → Google login (WIF)             │
+│ → build-info.json → upload bundle artifact           │ ──▶ │ → mvn apigee-enterprise:deploy → API tests       │
+└──────────────────────────────────────────────────────┘     └──────────────────────────────────────────────────┘
+       any failing step stops the run (non-zero exit)              runs only if build succeeded (needs: build)
+```
+
+**Job `build` — "Lint and package":**
+
+| Step | What it does |
+|------|--------------|
+| `actions/checkout@v4` | Gets the commit being built |
+| `actions/setup-node@v4` (Node 20, npm cache) + `npm ci` | Installs the pinned apigeelint and newman from `package-lock.json` |
+| `npm run lint` | **Quality gate:** apigeelint must exit 0 |
+| `npm run lint:report` (always) | Saves `reports/apigeelint-baseline.json` |
+| `actions/setup-java@v4` (Temurin 17, Maven cache) | Java + Maven for the Apigee plugin |
+| `mvn -B package -P nonprod` | Builds `target/helloworld-1.0.0.zip` (no Google login needed for packaging) |
+| Write build metadata | `target/build-info.json`: proxy, version, commit SHA, branch, event, run ID/number, UTC build time |
+| `actions/upload-artifact@v4` | Stores the zip + `build-info.json` as artifact `helloworld-bundle-<commit SHA>` for 30 days |
+| Upload lint report (always) | Artifact `apigeelint-report-<commit SHA>` |
+
+**Job `deploy` — "Deploy to eval and test":** runs only on pushes to `main` or manual runs, and only after `build` succeeds. Pull requests are linted and packaged but never deployed.
+
+| Step / setting | What it does |
+|----------------|--------------|
+| `permissions: id-token: write` | Allows the job to request a GitHub OIDC token, needed for Workload Identity Federation |
+| `concurrency: deploy-eval` | One deployment at a time; a newer run waits instead of racing |
+| `actions/download-artifact@v4` | Downloads **the exact zip built by the `build` job** into `target/` |
+| `google-github-actions/auth@v2` | Exchanges the GitHub OIDC token for a 1-hour Google access token as `github-apigee-deployer` (no key file; see 9.5) |
+| `mvn -B -P nonprod apigee-enterprise:deploy` | Runs **only** the plugin's deploy goal, so the downloaded zip is imported as a new revision and deployed without being rebuilt. `APIGEE_TOKEN` comes from the auth step; `APIGEE_ORG` / `APIGEE_ENV` from repository variables. |
+| `npm ci` + `node tests/postman/run-cloud.js eval` | Post-deploy API tests (**quality gate**) against `APIGEE_BASE_URL` with the `APIGEE_APIKEY` secret |
+| Upload test report (always) | Artifact `newman-report-<commit SHA>` (`reports/newman-eval.xml`) |
+
+**Supporting changes:**
+- `tests/postman/run-cloud.js` accepts `APIGEE_BASE_URL` to override the environment file's `baseUrl`, so the target URL is a GitHub variable, not code.
+- Verified locally before pushing: deploying a stored zip with only the deploy goal works (`target/apiproxy` removed, zip imported as revision 2, state `READY`, `200` with the app key).
+
+**Not run in CI:** the emulator-based tests (`npm run test:api:local`) need the local Apigee Emulator. In the pipeline the functional tests run against the deployed eval proxy instead.
+
+**Switching to staging later:** set `APIGEE_ENV` = `stagin` and `APIGEE_BASE_URL` = `https://staging.8.228.239.128.nip.io` (after the certificate fix, 8.11), add `stagin` to `helloworld-product`'s environments, and change `run-cloud.js eval` to the staging environment file.
+
+### 9.7 Remaining Day 3 steps
 
 | # | Step | Status |
 |---|------|--------|
@@ -847,5 +895,7 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 | 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ✅ Done |
 | 3 | Demonstrate that a failing assertion fails the test command | ✅ Done |
 | 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ✅ Done (GitHub variables: see 4.7) |
+| 5 | GitHub Actions workflow (lint, package, store artifact, deploy, API tests) | ✅ Done |
+| 6 | Push a change and observe the full pipeline run | ⏳ First run triggered by the commit that added the workflow |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
