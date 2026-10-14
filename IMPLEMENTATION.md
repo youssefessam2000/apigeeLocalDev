@@ -925,7 +925,8 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 |-----|---------|-----------|------------|-------|
 | 1 | Push `820965d` (workflow added) | ✅ Lint 0 errors, bundle packaged and stored | ❌ Google login ✅, import ✅ (revision 3), deploy `403` | Missing deploy permission (8.14); fixed by adding Apigee Environment Admin |
 | 2 | Push `5aa621f` (documenting 8.14) | ✅ | ✅ Google login, import + deploy **revision 4** (`PROGRESSING` 08:38:07 → `READY` 08:38:29), API tests passed | **First successful end-to-end run** |
-| 3 | Push of the commit adding `paths-ignore` | expected ✅ | expected ✅ (revision 5) | Workflow file changed, so this run is not skipped |
+| 3 | Push `6c22dc9` (adds `paths-ignore`) | ✅ | ✅ Deployed **revision 5** (`PROGRESSING` 08:40:06 → `READY` 08:40:27) | Workflow file changed, so this run was not skipped |
+| — | Push of the commit recording run 3 (docs only) | skipped | skipped | Expected: no run, no new revision (`paths-ignore`) |
 
 Confirmed independently from the Apigee side: revision 4 was created and deployed by the pipeline and replaced revision 2 on `eval`; running the same API tests against it locally gave 3 requests, 8 assertions, 0 failures. Both jobs were green in GitHub Actions, with the bundle, lint report and Newman report stored as run artifacts.
 
