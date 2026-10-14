@@ -17,6 +17,7 @@
 6. [Git History](#6-git-history)
 7. [Day 1 & Day 2 Task Completion Summary](#7-day-1--day-2-task-completion-summary)
 8. [Issues & Solutions](#8-issues--solutions)
+9. [Day 3 — Non-Production Deployment & CI (in progress)](#9-day-3--non-production-deployment--ci-in-progress)
 
 ---
 
@@ -626,4 +627,76 @@ gcloud projects describe project-953dc129-1db1-4aea-ae3                  # proje
 
 ---
 
-**Next:** Day 3 — CI Pipeline (GitHub Actions), automated deployment to non-production, end-to-end pipeline run.
+## 9. Day 3 — Non-Production Deployment & CI (in progress)
+
+**Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
+
+### 9.1 Prerequisites set up
+
+| Tool | Version | Purpose |
+|------|---------|---------|
+| Eclipse Temurin JDK | 17.0.17 | Runs Maven and the Apigee Maven plugin (both are Java programs) |
+| Apache Maven | 3.9.16 | Builds the bundle and runs the deployment |
+| Google Cloud CLI (`gcloud`) | 589.0.0 | Logs in to Google Cloud and issues the access token used for deployment |
+
+Login checks (see 8.10 for why the token's real identity is checked):
+
+```powershell
+gcloud auth list                                            # youssef.essam1955@gmail.com is active
+gcloud projects describe project-953dc129-1db1-4aea-ae3     # project details, no permission error
+```
+
+### 9.2 Step 1 — Deploy the proxy to eval with Maven ✅
+
+**Commands** (PowerShell, from the project root):
+
+```powershell
+$env:APIGEE_ORG   = "project-953dc129-1db1-4aea-ae3"   # Apigee org
+$env:APIGEE_ENV   = "eval"                             # target environment
+$env:APIGEE_TOKEN = (gcloud auth print-access-token)   # OAuth token, valid ~1 hour
+
+mvn install -P nonprod
+```
+
+**What each part does:**
+
+| Part | Purpose |
+|------|---------|
+| `$env:APIGEE_*` | Session-only environment variables. `pom.xml` reads them as `${env.APIGEE_ORG}`, `${env.APIGEE_ENV}`, `${env.APIGEE_TOKEN}`, so no org, environment or token is stored in Git. |
+| `-P nonprod` | Selects the `nonprod` Maven profile, which points the plugin at `https://apigee.googleapis.com` (the Apigee management API). |
+| `install` | Runs every Maven phase up to `install`, which triggers the steps below. |
+
+**Steps Maven runs:**
+
+| Phase | Plugin / goal | Result |
+|-------|---------------|--------|
+| `package` | `maven-resources-plugin:copy-resources` | Copies `src/main/apigee/apiproxies/helloworld/apiproxy` to `target/apiproxy` |
+| `package` | `apigee-edge-maven-plugin:configure` | Zips the bundle into `target/helloworld-1.0.0.zip` |
+| `install` | `apigee-edge-maven-plugin:deploy` | Imports the zip as a new proxy revision and deploys it to the environment |
+
+**What the deploy goal does behind the scenes** (Apigee management API calls, authenticated with the bearer token):
+
+1. **Import:** `POST /v1/organizations/{org}/apis?action=import&name=helloworld` with the zip → Apigee creates **revision 1**.
+2. **Deploy:** `POST /v1/organizations/{org}/environments/eval/apis/helloworld/revisions/1/deployments?override=true`. `override` comes from `apigee.options` in `pom.xml`; later revisions replace the deployed one without downtime.
+3. **Wait:** polls `GET .../revisions/1/deployments` until the state is `READY` (the repeated "Getting Deployment Info" lines). The full run took about 1.5 minutes.
+
+**Verification:**
+
+| Check | Result |
+|-------|--------|
+| Deployment state (`helloworld` rev 1 in `eval`) | `READY` |
+| `GET https://8.228.239.128.nip.io/helloworld` (no key) | `401` — `Failed to resolve API Key variable request.queryparam.apikey` |
+| `GET https://8.228.239.128.nip.io/helloworld?apikey=bad-key` | `401` — `Invalid ApiKey` |
+
+Both 401 responses show the proxy is live and enforcing the API key. A `200` needs a cloud API key, which is created in step 2. In the Apigee console the proxy appears under **Proxy development → API proxies → helloworld**, revision 1 deployed to `eval`.
+
+### 9.3 Remaining Day 3 steps
+
+| # | Step | Status |
+|---|------|--------|
+| 1 | Deploy `helloworld` to eval with Maven | ✅ Done |
+| 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ⏳ Next |
+| 3 | Demonstrate that a failing assertion fails the test command | ⏳ |
+| 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ⏳ |
+| 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
+| 6 | Push a change and observe the full pipeline run | ⏳ |
