@@ -16,6 +16,7 @@
 5. [Day 2 — Quality Gates & Packaging](#5-day-2--quality-gates--packaging)
 6. [Git History](#6-git-history)
 7. [Day 1 & Day 2 Task Completion Summary](#7-day-1--day-2-task-completion-summary)
+8. [Issues & Solutions](#8-issues--solutions)
 
 ---
 
@@ -505,6 +506,73 @@ mvn install -P nonprod
 | 6 | Define quality gates | ✅ Complete | Thresholds documented in README and this document |
 | 7 | Package the proxy | ✅ Complete | `mvn package -P nonprod` builds `target/helloworld-1.0.0.zip` (plugin v2.5.2) |
 | 8 | Validate deployment config | ✅ Complete | `dev` and `nonprod` profiles resolve; `mvn install` reaches the Apigee API (401 with dummy token); secrets via env vars |
+
+---
+
+## 8. Issues & Solutions
+
+Problems found while building and verifying Day 1 and Day 2, and how each was resolved.
+
+### 8.1 apigeelint findings on the proxy (Day 2, `cd00baa`)
+
+**Issue:** The first lint run reported findings in the proxy bundle:
+- Policy names (`remove-query-param-apikey`, `impose-quota`) did not follow the type-prefix naming convention.
+- Display names did not match the policy names.
+- The base path was `helloworld` without a leading `/`.
+- The target endpoint called an HTTPS URL without an `SSLInfo` block.
+- `AM-RemoveApiKeyParam` had an unnecessary `AssignTo` element.
+
+**Solution:**
+- Renamed the policies to `AM-RemoveApiKeyParam` and `Q-ImposeQuota`, updated their flow steps, and aligned all display names.
+- Changed the base path to `/helloworld`.
+- Added `SSLInfo` (`Enabled` and `Enforce` set to `true`) to the target.
+- Removed the `AssignTo` element.
+- Rules `TD002` and `TD007` were excluded as justified exceptions (see 5.2). Result: 0 errors, 0 warnings.
+
+### 8.2 Emulator API key changes on every test-bundle deploy (Day 2, `d785e59`)
+
+**Issue:** The emulator generates a new developer app key each time `mytestbundle` is deployed. The key stored in the Postman environment file went stale, and the Newman tests failed with 401.
+
+**Solution:** Added `tests/postman/run-local.js`. It reads the current key for app `myapp` from the emulator control API (`http://localhost:8080/v1/emulator/test/developerapps`) and passes it to Newman, so no key is stored in Git. A key can still be supplied manually with `--env-var "apikey=..."`.
+
+### 8.3 Maven plugin did not exist; packaging produced nothing (Day 2, `9c7f3d1`)
+
+**Issue:** `pom.xml` referenced `com.apigee.edge:apigee-deploy-maven-plugin:2.4.4`, which is not on Maven Central. It also had no `configure` goal, so `mvn package` reported `BUILD SUCCESS` without building a bundle, and `mvn install` would have failed.
+
+**Solution:**
+- Switched to the official `io.apigee.build-tools.enterprise4g:apigee-edge-maven-plugin:2.5.2`.
+- Added `maven-resources-plugin` to copy the proxy into `target/apiproxy`, bound `configure` to `package` and `deploy` to `install`, following the plugin's sample project (see 5.5).
+- Verified: `mvn package -P nonprod` builds `target/helloworld-1.0.0.zip`, and `mvn install -P nonprod` reaches `apigee.googleapis.com` (401 with a dummy token, as expected).
+
+### 8.4 Proxy name would have been "helloworld Apigee Proxy" (Day 2, `9c7f3d1`)
+
+**Issue:** The plugin uses the pom's `<name>` as the proxy name in the Apigee org. The original value was `helloworld Apigee Proxy`.
+
+**Solution:** Set `<name>helloworld</name>`.
+
+### 8.5 Maven could not run: no JDK installed (Day 2)
+
+**Issue:** After `choco install maven`, `mvn` failed with `The JAVA_HOME environment variable is not defined correctly`. Maven and the Apigee plugin are Java programs, and no JDK was installed.
+
+**Solution:** Installed Eclipse Temurin 17 (`choco install temurin17 -y`), which sets `JAVA_HOME` and `PATH`. A new terminal (or `refreshenv`) is needed for the change to take effect.
+
+### 8.6 `dev` Maven profile cannot deploy to the emulator (Day 2)
+
+**Issue:** The emulator does not expose the Apigee management API, so `mvn install -P dev` cannot deploy to it.
+
+**Solution:** The `dev` profile is used for packaging only (`mvn package -P dev`). The proxy is deployed to the emulator with Cloud Code.
+
+### 8.7 Git merge blocked by a file open in WPS Office (Day 2)
+
+**Issue:** `git merge` failed with `unable to unlink 'Apigee_CICD_POC.csv': Invalid argument` because the file was open in WPS Office, which locks it on Windows.
+
+**Solution:** Closed the file, then merged and pushed. Close files that Git needs to update before switching branches or merging.
+
+### 8.8 Generated `target/` files still tracked by Git (open)
+
+**Issue:** `target/` is listed in `.gitignore`, but `target/emulator/testdata/` was committed before the rule was added (`f373640`, `e49e84b`). Every test-bundle deploy regenerates developer/app IDs and emulator API keys there, so these files keep showing up as modified, and old emulator keys are in Git history. `mvn clean` would also delete them.
+
+**Solution (recommended, not yet applied):** Stop tracking the folder with `git rm -r --cached target` and commit. The files stay on disk, and the ignore rule then applies. Emulator keys are local-only, so the keys already in history are low risk. Until then, do not run `mvn clean`.
 
 ---
 
