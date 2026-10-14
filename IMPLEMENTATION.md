@@ -7,6 +7,21 @@
 
 ---
 
+## How to read this document
+
+| If you want to… | Read |
+|-----------------|------|
+| Understand the project and its files | 1 Overview, 2 Tools, 3 Project Structure |
+| See what was built each day and why | 4 Day 1, 5 Day 2, 9 Day 3 (each step lists the commands, what each part does, and the results) |
+| See every problem we hit and how it was solved | 8 Issues & Solutions (8.1–8.14, each with *Issue → Root cause → Solution*) |
+| Check what is finished against the task plan | 7 (Days 1–2) and 9.10 (Day 3) |
+| Find the Apigee org, environments and hostnames | "Apigee org reference" at the end of section 8 |
+| Re-run something yourself | The command blocks in 5.5, 9.2, 9.3, 9.4 and 9.5 |
+
+**Status:** Day 1 ✅ · Day 2 ✅ · Day 3 ✅ · Day 4 not started.
+
+---
+
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)
@@ -31,7 +46,9 @@ A simple Apigee X proxy (`helloworld`) built as a CI/CD proof-of-concept. The pr
 - Calls a **mock XML target** and transforms the response to **JSON**
 - Is tested locally using the **Apigee Emulator** (Docker-based)
 - Is linted with **apigeelint** and tested via **Newman** (Postman CLI runner)
-- Is packaged and deployable via the **Apigee Deploy Maven Plugin v2.x**
+- Is packaged and deployed via the **Apigee Deploy Maven Plugin v2.5.2**
+- Is deployed to the Apigee X evaluation org (environment `eval`) and tested there with the same Postman collection
+- Runs through a **GitHub Actions** pipeline: lint → package → stored artifact → keyless Google login → deploy → API tests
 
 ---
 
@@ -44,9 +61,10 @@ A simple Apigee X proxy (`helloworld`) built as a CI/CD proof-of-concept. The pr
 | Node.js | v18+ | Runs apigeelint and Newman |
 | apigeelint | 2.85.1 | Static analysis for Apigee proxy bundles |
 | Newman | 6.2.3 | CLI runner for Postman collections |
-| Java | 11+ | Maven build |
-| Maven | 3.6+ | Proxy packaging & deployment |
-| gcloud CLI | Latest | Authentication for Apigee X deployments |
+| Java (Eclipse Temurin JDK) | 17 (11+ works) | Runs Maven and the Apigee plugin |
+| Maven | 3.9.16 (3.6+ works) | Proxy packaging & deployment |
+| gcloud CLI | 589.0.0 | Login and access tokens for Apigee X; Workload Identity setup |
+| GitHub Actions | — | CI/CD pipeline (`.github/workflows/ci.yml`) |
 | Git | Latest | Source control |
 | Postman | Latest | API test collection authoring |
 
@@ -85,14 +103,22 @@ myapigeeworkspace/
 │           └── maps.json                             # KVM entries (empty)
 ├── tests/
 │   └── postman/
-│       ├── hello.postman_collection.json             # Functional test collection
+│       ├── hello.postman_collection.json             # Functional test collection (3 requests, 8 assertions)
+│       ├── run-local.js                              # Runs it against the emulator (fetches the emulator key)
+│       ├── run-cloud.js                              # Runs it against Apigee X (key from APIGEE_APIKEY)
 │       └── env/
-│           └── local.postman_environment.json        # Local emulator environment
+│           ├── local.postman_environment.json        # Local emulator environment
+│           └── eval.postman_environment.json         # Apigee X eval environment (no key stored)
+├── .github/
+│   └── workflows/
+│       └── ci.yml                                    # GitHub Actions pipeline (build + deploy jobs)
 ├── reports/                                          # Generated reports (git-ignored)
-├── target/                                           # Maven build output (git-ignored)
+├── target/                                           # Maven build output + emulator data (git-ignored)
 ├── pom.xml                                           # Maven build & deployment config
 ├── package.json                                      # Node.js scripts & dependencies
 ├── .gitignore                                        # Ignore rules
+├── Apigee_CICD_POC.csv                               # 4-day task plan
+├── CHAT_HISTORY.md                                   # Notes from the first working session
 ├── README.md                                         # Setup & usage guide
 └── IMPLEMENTATION.md                                 # This document
 ```
@@ -340,7 +366,8 @@ Thumbs.db
     "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f table.js",
     "prelint:report": "node -e \"require('fs').mkdirSync('reports',{recursive:true})\"",
     "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f json.js > reports/apigeelint-baseline.json",
-    "test:api:local": "newman run tests/postman/hello.postman_collection.json -e tests/postman/env/local.postman_environment.json -r cli,junit --reporter-junit-export reports/newman-local.xml",
+    "test:api:local": "node tests/postman/run-local.js",
+    "test:api:eval": "node tests/postman/run-cloud.js eval",
     "test": "npm run lint && npm run test:api:local"
   },
   "devDependencies": {
@@ -356,8 +383,9 @@ Thumbs.db
 |---------|-------------|
 | `npm run lint` | Run apigeelint on the proxy bundle (table output) |
 | `npm run lint:report` | Generate JSON lint report → `reports/apigeelint-baseline.json` |
-| `npm run test:api:local` | Run Newman against local emulator → `reports/newman-local.xml` |
-| `npm test` | Run lint + functional tests (full quality gate) |
+| `npm run test:api:local` | Run Newman against the local emulator (key fetched automatically, see 8.2) → `reports/newman-local.xml` |
+| `npm run test:api:eval` | Run Newman against Apigee X eval; needs `$env:APIGEE_APIKEY` (added on Day 3, see 9.3) → `reports/newman-eval.xml` |
+| `npm test` | Run lint + emulator functional tests (full local quality gate) |
 
 ---
 
@@ -465,8 +493,23 @@ mvn install -P nonprod
 
 ## 6. Git History
 
+Newest first. Commits after `873fe83` are visible with `git log --oneline`.
+
 | Commit | Message |
 |--------|---------|
+| `873fe83` | docs: record red/green PR demo and correct revision history |
+| `65f0c5e` | docs: record pipeline run 3 (revision 5 READY) |
+| `6c22dc9` | ci: skip pipeline for documentation-only changes; mark Day 3 complete |
+| `5aa621f` | docs: record pipeline deploy 403 and Environment Admin fix (issue 8.14) |
+| `820965d` | ci: add GitHub Actions pipeline (lint, package, deploy to eval, API tests) |
+| `ed61ed8` | docs: document Day 3 step 4 (Workload Identity Federation for GitHub) |
+| `3841329` | docs: document Day 3 step 3 (test failure handling) |
+| `43f819a` | feat(tests): run API tests against Apigee eval |
+| `3004178` | docs: document Day 3 step 1 (Maven deploy to Apigee eval) |
+| `8e92698` | docs: record Day 3 setup issues (PATH, gcloud/Cloud Code login, staging TLS) |
+| `2b70733` | chore: stop tracking generated target/ folder |
+| `f3bd17e` | docs: add Issues & Solutions section to IMPLEMENTATION.md |
+| `9c7f3d1` | fix(maven): use the official Apigee deploy plugin so packaging works |
 | `d785e59` | feat(tests): fetch emulator API key automatically for Newman runs |
 | `e9963a6` | docs: add IMPLEMENTATION.md covering Day 1 and Day 2 full implementation details |
 | `f6cc23e` | feat(day2): add Postman collection, Newman tests, Maven pom, and quality gate docs |
@@ -908,7 +951,7 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 
 **Switching to staging later:** set `APIGEE_ENV` = `stagin` and `APIGEE_BASE_URL` = `https://staging.8.228.239.128.nip.io` (after the certificate fix, 8.11), add `stagin` to `helloworld-product`'s environments, and change `run-cloud.js eval` to the staging environment file.
 
-### 9.7 Remaining Day 3 steps
+### 9.7 Day 3 step checklist
 
 | # | Step | Status |
 |---|------|--------|
