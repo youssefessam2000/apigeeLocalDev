@@ -15,9 +15,6 @@
       <Step>
         <Name>XMLtoJSON</Name>
       </Step>
-      <Step>
-        <Name>AM-DoesNotExist</Name>
-      </Step>
     </Response>
   </PreFlow>
   <HTTPProxyConnection>
