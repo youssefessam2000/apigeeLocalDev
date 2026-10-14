@@ -971,6 +971,19 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 | 1 (re-run) | **Re-run failed jobs** on run 1 (after 8.14 fix) | — (reused) | ✅ Deployed run 1's stored bundle as **revision 5** (created 08:39:45) | Shows a stored artifact can be redeployed without rebuilding |
 | 3 | Push `6c22dc9` (adds `paths-ignore`) | ✅ | ✅ Deployed **revision 6** (created 08:41:18, `READY`) | Workflow file changed, so this run was not skipped |
 | — | Push `65f0c5e` (docs only) | skipped | skipped | ✅ No run; no new revision appeared in the following 6 minutes (`paths-ignore` works) |
+| — | Pushes `873fe83`, `75a403e` (docs only) | skipped | skipped | ✅ No run; still revision 6 |
+| 4 | Push `28bfdbe` (comment added to `verify-api-key.xml`) | ✅ | ✅ Deployed **revision 7** (created 09:19:07, `READY` 09:20:22) | Code change → automatic deploy; see "Code change to live revision" below |
+
+**Code change to live revision (run 4):** a one-line XML comment was added to `policies/verify-api-key.xml` and pushed to `main` at 09:18:03. Without any manual step, GitHub Actions linted and packaged the proxy, and deployed it as revision 7, which replaced revision 6 on `eval` about 2.5 minutes after the push. Downloading both bundles from Apigee (`GET .../apis/helloworld/revisions/{rev}?format=bundle`) showed the comment only in revision 7, proving the pipeline deployed the pushed commit, not an older bundle. Live check after the deploy: `200` with the app key, `401` without a key.
+
+```
+09:18:03  push 28bfdbe to main
+09:19:07  revision 7 imported by the pipeline
+09:19:18  revision 7 deploying (PROGRESSING), replacing revision 6
+09:20:22  revision 7 READY — live on https://8.228.239.128.nip.io/helloworld
+```
+
+**Scope:** the pipeline handles the `helloworld` proxy only (paths in `package.json`, `pom.xml` and the Postman collection). A new proxy folder would trigger the pipeline but would not be linted, packaged or deployed. Supporting multiple proxies (one Maven module per proxy, deploying only changed proxies) is a backlog item.
 
 **Correction:** an earlier version of this table attributed revision 5 to run 3. Revision timestamps show revision 5 was created at 08:39:45, before commit `6c22dc9` existed (08:39:56); it came from the manual re-run of run 1. Run 3 created revision 6.
 
