@@ -8,6 +8,7 @@
     "prelint:report": "node -e \"require('fs').mkdirSync('reports',{recursive:true})\"",
     "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f json.js > reports/apigeelint-baseline.json",
     "test:api:local": "node tests/postman/run-local.js",
+    "test:api:eval": "node tests/postman/run-cloud.js eval",
     "test": "npm run lint && npm run test:api:local"
   },
   "repository": {

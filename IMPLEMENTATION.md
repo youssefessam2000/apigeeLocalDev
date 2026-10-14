@@ -616,6 +616,14 @@ gcloud projects describe project-953dc129-1db1-4aea-ae3                  # proje
 
 **Solution:** Kept as is for the POC. When switching to staging, use `APIGEE_ENV=stagin`.
 
+### 8.13 `npm run ... -- --env-var` loses the API key in Windows PowerShell (Day 3)
+
+**Issue:** `npm run test:api:eval -- --env-var "apikey=<key>"` got `401` on the happy-path test, although `curl` with the same key returned `200` and running `npx newman ... --env-var` directly passed. Newman was still sending the placeholder key from the environment file.
+
+**Root cause:** In Windows PowerShell, `npm` resolves to the `npm.ps1` wrapper, and PowerShell treats `--` as its own end-of-parameters marker and drops it. npm then read `--env-var` as an npm option instead of passing it to the script. (`npm.cmd` keeps the `--` but has the same problem in this setup.) Local runs had hidden this because `run-local.js` fetches the emulator key by itself.
+
+**Solution:** `tests/postman/run-cloud.js` reads the key from the `APIGEE_APIKEY` environment variable, which works the same in PowerShell, bash and GitHub Actions. Earlier instructions that pass `-- --env-var "apikey=..."` through npm should not be used in PowerShell; call Newman directly or use the environment variable.
+
 ### Apigee org reference (checked Day 3)
 
 | Item | Value |
@@ -690,13 +698,49 @@ mvn install -P nonprod
 
 Both 401 responses show the proxy is live and enforcing the API key. A `200` needs a cloud API key, which is created in step 2. In the Apigee console the proxy appears under **Proxy development → API proxies → helloworld**, revision 1 deployed to `eval`.
 
-### 9.3 Remaining Day 3 steps
+### 9.3 Step 2 — Cloud test data and API tests against eval ✅
+
+Emulator API keys do not work in Apigee X, so the cloud org needs its own product, developer and app (the same model as `src/tests/mytestbundle/`). They were created once with the Apigee management API (`POST` requests with `gcloud auth print-access-token` as bearer token):
+
+| Resource | Name | Settings |
+|----------|------|----------|
+| API product | `helloworld-product` | Proxy `helloworld`, environment `eval`, resources `/` and `/**`, quota 100 per minute, auto-approval |
+| Developer | `ahamilton@example.com` | Alex Hamilton (same as the emulator test developer) |
+| Developer app | `helloworld-app` | Subscribed to `helloworld-product`; Apigee generated an approved API key |
+
+The key is visible in the Apigee console under **Distribution → Apps → helloworld-app**, or with:
+
+```powershell
+$t = gcloud auth print-access-token
+(curl.exe -s -H "Authorization: Bearer $t" "https://apigee.googleapis.com/v1/organizations/project-953dc129-1db1-4aea-ae3/developers/ahamilton@example.com/apps/helloworld-app" | ConvertFrom-Json).credentials[0].consumerKey
+```
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `tests/postman/env/eval.postman_environment.json` | `baseUrl` = `https://8.228.239.128.nip.io`. The `apikey` value is a placeholder; the real key is never committed. |
+| `tests/postman/run-cloud.js` | Runs the same Postman collection against a cloud environment. Takes the environment name (`eval`, later `stagin`), reads the key from the `APIGEE_APIKEY` environment variable, and writes `reports/newman-<env>.xml`. Fails with a clear message if the key or environment file is missing. |
+| `package.json` → `test:api:eval` | `node tests/postman/run-cloud.js eval` |
+
+**Run:**
+
+```powershell
+$env:APIGEE_APIKEY = "<helloworld-app key>"
+npm run test:api:eval
+```
+
+**Result:** 3 requests, 8 assertions, 0 failures — `200` + JSON with the valid key, `401` without a key, `401` `InvalidApiKey` with a wrong key. JUnit report: `reports/newman-eval.xml`.
+
+The key is read from an environment variable rather than `--env-var` on the npm command line because of issue 8.13. GitHub Actions will provide it the same way, from a repository secret.
+
+### 9.4 Remaining Day 3 steps
 
 | # | Step | Status |
 |---|------|--------|
 | 1 | Deploy `helloworld` to eval with Maven | ✅ Done |
-| 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ⏳ Next |
-| 3 | Demonstrate that a failing assertion fails the test command | ⏳ |
+| 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ✅ Done |
+| 3 | Demonstrate that a failing assertion fails the test command | ⏳ Next |
 | 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ⏳ |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
