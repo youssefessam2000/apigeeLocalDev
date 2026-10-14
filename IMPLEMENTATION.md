@@ -17,8 +17,10 @@
 | Check what is finished against the task plan | 7 (Days 1–2) and 9.10 (Day 3) |
 | Find the Apigee org, environments and hostnames | "Apigee org reference" at the end of section 8 |
 | Re-run something yourself | The command blocks in 5.5, 9.2, 9.3, 9.4 and 9.5 |
+| Understand design decisions (console development, Cloud Build, production readiness, Day 4 plan) | 10 Design Notes & Decisions |
+| Resume the work in a new session | `CHAT_HISTORY.md` → "Resume here" |
 
-**Status:** Day 1 ✅ · Day 2 ✅ · Day 3 ✅ · Day 4 not started.
+**Status:** Day 1 ✅ · Day 2 ✅ · Day 3 ✅ · Next: migrate the pipeline to Cloud Build (10.3), then Day 4 (10.4).
 
 ---
 
@@ -33,6 +35,7 @@
 7. [Day 1 & Day 2 Task Completion Summary](#7-day-1--day-2-task-completion-summary)
 8. [Issues & Solutions](#8-issues--solutions)
 9. [Day 3 — Non-Production Deployment & CI](#9-day-3--non-production-deployment--ci)
+10. [Design Notes & Decisions](#10-design-notes--decisions)
 
 ---
 
@@ -1039,4 +1042,101 @@ Confirmed independently from the Apigee side: revision 4 was created and deploye
 
 ---
 
-**Next:** Day 4 — controlled deployment stage (deploy only after merge/approval), configuration and secret review, and switching the pipeline to the staging environment once its TLS certificate is fixed (8.11).
+## 10. Design Notes & Decisions
+
+Answers to questions raised after Day 3, kept here as learning material.
+
+### 10.1 Is this a real CI/CD pipeline for production Apigee?
+
+**The pattern is production-grade; the setup is a POC.**
+
+| Already production-standard | Why |
+|-----------------------------|-----|
+| apigeelint as a quality gate | Google's own linter for Apigee bundles |
+| Apigee Deploy Maven Plugin | Long-standing, widely used way to deploy Apigee from CI |
+| Keyless CI login (Workload Identity Federation / service account) | Google's recommended approach; no long-lived keys |
+| Build once, store, deploy the same artifact | Core CI/CD principle; proven by the run 1 re-run (revision 5) |
+| PRs validate, only `main` deploys | Separation of validation and deployment |
+| Post-deploy Newman tests as a gate | Automatic verification of every deployment |
+| Zero-downtime revision swap (`override`) | Standard Apigee deployment mode |
+
+| Missing for production | What production would add |
+|------------------------|---------------------------|
+| One evaluation environment (org expires 2026-12-10) | Separate dev / test / prod environments (often a separate prod org) |
+| No approval, no branch protection | Required PR reviews, block merge on red CI, manual approval before prod |
+| Product, developer, app created by hand | Config-as-code (Maven config goals or `apigeecli`): products, KVMs, target servers |
+| Target URL hard-coded in `targets/default.xml` | Target servers per environment |
+| Deploy role granted project-wide | Environment-scoped roles; separate deploy identity for prod |
+| Fixed version `1.0.0` | Version per build (git tag or build number) |
+| No rollback procedure | Documented/automated redeploy of the previous revision |
+| No monitoring | Alerts on error rate and latency (Apigee analytics, Cloud Monitoring) |
+| Single-proxy pipeline | One Maven module per proxy; deploy only proxies that changed |
+| Functional tests only | Security checks and production-sized performance tests |
+
+### 10.2 Developing in the Apigee console instead of VS Code
+
+The pipeline deploys only what is **in Git**. Changes saved in the Apigee web editor exist only in Apigee, and the **next pipeline deploy overwrites them** (it imports the Git version as a new revision). Rule: **Git is the source of truth; the console is for experimenting.**
+
+Flow when building in the console:
+
+```
+Edit/test in the console (sandbox env or a copy, e.g. helloworld-dev)
+  → export the revision as a zip → unzip into src/main/apigee/apiproxies/<proxy>/apiproxy
+  → commit + push or open a PR → pipeline lints, packages, deploys, tests
+```
+
+Export options:
+- Console: **Proxy development → API proxies → <proxy> → Develop → Project → Download revision**.
+- API (scriptable): `GET https://apigee.googleapis.com/v1/organizations/<org>/apis/<proxy>/revisions/<rev>?format=bundle` with a bearer token from `gcloud auth print-access-token` (used in 9.8 to compare revisions 6 and 7).
+- Optional automation: a manual "import from Apigee" job that downloads a revision and opens a PR for review.
+
+### 10.3 Decision: move the pipeline from GitHub Actions to Cloud Build
+
+**Reason:** the client works on Google Cloud. Cloud Build keeps builds, identities, secrets, artifacts and logs inside the client's GCP project.
+
+**What stays the same:** proxy, `pom.xml` and Maven plugin, apigeelint, Newman, `run-cloud.js`, eval product/app, the stage order (lint → package → store → deploy → test).
+
+| | GitHub Actions (Day 3) | Cloud Build (planned) |
+|---|---|---|
+| Pipeline file | `.github/workflows/ci.yml` | `cloudbuild.yaml` (PR validation) + `cloudbuild-deploy.yaml` (deploy) |
+| Google login | Workload Identity Federation (`github-pool` / `github-provider`) | Built in: build runs as a user-managed service account; WIF not needed |
+| API key | GitHub secret `APIGEE_APIKEY` | Secret Manager secret |
+| Stored bundle | GitHub artifacts (30 days) | Cloud Storage bucket per commit (or Artifact Registry) |
+| Settings | GitHub variables | Trigger substitutions (`_APIGEE_ENV`, `_APIGEE_BASE_URL`, …) |
+| Triggers | `on:` in the workflow | Cloud Build triggers on the GitHub repo (PR trigger + push-to-`main` trigger) |
+| Manual approval | GitHub environments | "Require approval" on a trigger |
+| Logs / audit | GitHub | Cloud Logging + Cloud Audit Logs |
+| Cost | Free minutes | Free tier (120 build-minutes/day), then paid |
+
+**Migration plan:**
+
+| # | Step | Who |
+|---|------|-----|
+| 1 | Enable Cloud Build and Secret Manager APIs | Claude |
+| 2 | Create service account `cloudbuild-apigee-deployer`; grant Apigee API Admin, Apigee Environment Admin, Secret Manager Secret Accessor, Logs Writer, bucket write | Youssef (role grants are blocked for Claude, see 8.14) |
+| 3 | Store the `helloworld-app` key in Secret Manager; create the bundle bucket | Claude |
+| 4 | Connect the GitHub repo to Cloud Build (browser authorization of the Cloud Build GitHub app) | Youssef |
+| 5 | Write `cloudbuild.yaml` and `cloudbuild-deploy.yaml` | Claude |
+| 6 | Create the PR trigger and the push-to-`main` trigger | Claude |
+| 7 | Disable the GitHub Actions workflow so pushes do not deploy twice | Claude |
+| 8 | Test: red/green PR, then a code push that deploys a new revision | Both |
+| 9 | Document in this file | Claude |
+
+### 10.4 Day 4 plan (task plan)
+
+| # | Day 4 task | Deliverable | Status before Day 4 | Remaining work |
+|---|------------|-------------|---------------------|----------------|
+| 1 | Add controlled deployment stage | Non-production deployment stage | Mostly done: deploys only after CI passes on `main`, keyless login, tokens never printed | Add manual approval (Cloud Build "Require approval") |
+| 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | Mostly done: Newman after deploy fails the pipeline | Readable report (HTML) stored with the build |
+| 3 | Environment promotion design | Documented promotion path | Not started | dev → eval → staging → prod design; promote the same tested revision from `eval` to `stagin` |
+| 4 | Configuration and secret review | Config and secret checklist | Partly known | Checklist of target URL, KVMs/target servers (none), secrets, git history, manual vs as-code resources |
+| 5 | Optional performance test | Baseline results or documented deferral | Not started | Small k6 run on eval, or documented deferral |
+| 6 | Documentation and release notes | Complete project documentation | IMPLEMENTATION.md complete to Day 3 | OpenAPI file, README update, pipeline diagram, release notes |
+| 7 | Final clean run | End-to-end evidence pack | Not started | Change → PR → green → merge → approval → deploy → tests; trace commit ↔ artifact ↔ revision ↔ report |
+| 8 | Demo and retrospective | Demo checklist + backlog | Not started | Demo script; done / optional / production-hardening backlog (10.1) |
+
+Suggested order: Cloud Build migration (10.3) → 4 → 1 → 2 → 3 → 6 → 5 → 7 → 8.
+
+---
+
+**Next:** migrate the pipeline to Cloud Build (10.3), then Day 4 (10.4).
