@@ -568,11 +568,11 @@ Problems found while building and verifying Day 1 and Day 2, and how each was re
 
 **Solution:** Closed the file, then merged and pushed. Close files that Git needs to update before switching branches or merging.
 
-### 8.8 Generated `target/` files still tracked by Git (open)
+### 8.8 Generated `target/` files still tracked by Git (Day 2)
 
 **Issue:** `target/` is listed in `.gitignore`, but `target/emulator/testdata/` was committed before the rule was added (`f373640`, `e49e84b`). Every test-bundle deploy regenerates developer/app IDs and emulator API keys there, so these files keep showing up as modified, and old emulator keys are in Git history. `mvn clean` would also delete them.
 
-**Solution (recommended, not yet applied):** Stop tracking the folder with `git rm -r --cached target` and commit. The files stay on disk, and the ignore rule then applies. Emulator keys are local-only, so the keys already in history are low risk. Until then, do not run `mvn clean`.
+**Solution:** Stopped tracking the folder with `git rm -r --cached target`. The files stay on disk and the `.gitignore` rule now applies, so regenerated emulator data no longer shows as changes. Emulator keys are local-only, so the keys already in history are low risk. `mvn clean` still deletes the emulator test data on disk; redeploy the test bundle from Cloud Code if that happens.
 
 ---
 
