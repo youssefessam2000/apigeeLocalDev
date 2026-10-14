@@ -17,7 +17,7 @@
 6. [Git History](#6-git-history)
 7. [Day 1 & Day 2 Task Completion Summary](#7-day-1--day-2-task-completion-summary)
 8. [Issues & Solutions](#8-issues--solutions)
-9. [Day 3 — Non-Production Deployment & CI (in progress)](#9-day-3--non-production-deployment--ci-in-progress)
+9. [Day 3 — Non-Production Deployment & CI](#9-day-3--non-production-deployment--ci)
 
 ---
 
@@ -655,7 +655,7 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 ---
 
-## 9. Day 3 — Non-Production Deployment & CI (in progress)
+## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
 
@@ -917,13 +917,44 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 | 3 | Demonstrate that a failing assertion fails the test command | ✅ Done |
 | 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ✅ Done (GitHub variables: see 4.7) |
 | 5 | GitHub Actions workflow (lint, package, store artifact, deploy, API tests) | ✅ Done |
-| 6 | Push a change and observe the full pipeline run | ⏳ In progress |
+| 6 | Push a change and observe the full pipeline run | ✅ Done (run 2, see 9.8) |
 
 ### 9.8 Step 6 — End-to-end pipeline runs
 
 | Run | Trigger | Build job | Deploy job | Notes |
 |-----|---------|-----------|------------|-------|
 | 1 | Push `820965d` (workflow added) | ✅ Lint 0 errors, bundle packaged and stored | ❌ Google login ✅, import ✅ (revision 3), deploy `403` | Missing deploy permission (8.14); fixed by adding Apigee Environment Admin |
-| 2 | Push of the commit documenting 8.14 | ⏳ | ⏳ | Expected: deploy as revision 4, 8/8 API assertions pass |
+| 2 | Push `5aa621f` (documenting 8.14) | ✅ | ✅ Google login, import + deploy **revision 4** (`PROGRESSING` 08:38:07 → `READY` 08:38:29), API tests passed | **First successful end-to-end run** |
+| 3 | Push of the commit adding `paths-ignore` | expected ✅ | expected ✅ (revision 5) | Workflow file changed, so this run is not skipped |
+
+Confirmed independently from the Apigee side: revision 4 was created and deployed by the pipeline and replaced revision 2 on `eval`; running the same API tests against it locally gave 3 requests, 8 assertions, 0 failures. Both jobs were green in GitHub Actions, with the bundle, lint report and Newman report stored as run artifacts.
+
+**Where to find the evidence:**
+
+| What | Where |
+|------|-------|
+| Run history and logs | GitHub → **Actions → CI** |
+| Stored bundle + `build-info.json` (commit, run number, build time) | Run page → **Artifacts → `helloworld-bundle-<commit SHA>`** (kept 30 days) |
+| Lint and API test reports | Run page → **Artifacts → `apigeelint-report-<SHA>`**, **`newman-report-<SHA>`** |
+| Deployed revisions | Apigee console → **Proxy development → API proxies → helloworld → Deployments** |
+
+**Improvement after run 2:** every push to `main` deployed a new revision, even documentation-only commits. The workflow now has `paths-ignore: ['**.md', '**.csv']` on `push` and `pull_request`, so changes that only touch documentation do not run the pipeline. A manual run (**Actions → CI → Run workflow**) is still possible at any time.
+
+### 9.9 Day 3 summary
+
+| # | Day 3 task (task plan) | Status | Evidence |
+|---|------------------------|--------|----------|
+| 1 | Prepare non-production target | ✅ | Eval org/environment checked (9.1, org table in 8); deployer identity and minimum roles defined (9.5, 8.14) |
+| 2 | Deploy the proxy | ✅ | Maven deploy to eval, revision 1 `READY` (9.2) |
+| 3 | Run post-deploy functional tests | ✅ | Newman against eval, 8/8 (9.3) |
+| 4 | Test failure handling | ✅ | Wrong expected status → exit 1; restored → exit 0 (9.4) |
+| 5 | Create CI workflow | ✅ | `.github/workflows/ci.yml` on pull requests, pushes to `main`, manual runs (9.6) |
+| 6 | Wire in automated quality gates | ✅ | Lint and API tests are required steps; any non-zero exit stops the run (9.4, 9.6) |
+| 7 | Store build artifact | ✅ | Bundle + `build-info.json` uploaded per run, 30-day retention (9.6) |
+| 8 | Run end-to-end pipeline | ✅ | Run 2: lint → package → artifact → deploy revision 4 → API tests (9.8) |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
+
+---
+
+**Next:** Day 4 — controlled deployment stage (deploy only after merge/approval), configuration and secret review, and switching the pipeline to the staging environment once its TLS certificate is fixed (8.11).

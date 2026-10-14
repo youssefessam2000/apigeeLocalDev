@@ -15,8 +15,11 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    paths-ignore: ['**.md', '**.csv']
   push:
     branches: [main]
+    # Documentation-only changes do not build or deploy a new revision.
+    paths-ignore: ['**.md', '**.csv']
   workflow_dispatch:
 
 permissions:
