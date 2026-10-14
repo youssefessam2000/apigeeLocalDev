@@ -624,6 +624,26 @@ gcloud projects describe project-953dc129-1db1-4aea-ae3                  # proje
 
 **Solution:** `tests/postman/run-cloud.js` reads the key from the `APIGEE_APIKEY` environment variable, which works the same in PowerShell, bash and GitHub Actions. Earlier instructions that pass `-- --env-var "apikey=..."` through npm should not be used in PowerShell; call Newman directly or use the environment variable.
 
+### 8.14 Pipeline deploy failed with `403 PERMISSION_DENIED` (Day 3, first pipeline run)
+
+**Issue:** In the first GitHub Actions run, the keyless Google login and the bundle import both worked (revision 3 was created), but the deploy call `POST .../environments/eval/apis/helloworld/revisions/3/deployments` returned `403 The caller does not have permission`.
+
+**Root cause:** `roles/apigee.apiAdminV2` (Apigee API Admin) allows importing proxies and includes `apigee.proxyrevisions.deploy`, but not the environment-level permissions `apigee.deployments.create` (deploy into an environment) and `apigee.deployments.get` (used by the plugin to wait for `READY`). Of the predefined roles, only Apigee Organization Admin, Apigee Editor and **Apigee Environment Admin** include `apigee.deployments.create`; Environment Admin is the narrowest.
+
+**Solution:** Granted `roles/apigee.environmentAdmin` to the deployer service account (run by Youssef):
+
+```powershell
+gcloud projects add-iam-policy-binding project-953dc129-1db1-4aea-ae3 --member="serviceAccount:github-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com" --role="roles/apigee.environmentAdmin" --condition=None
+```
+
+Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apigee.environmentAdmin`.
+
+**Note:** this grant is project-wide, so it covers both `eval` and `stagin`. A tighter alternative is to grant Environment Admin on a single environment through the Apigee environment IAM API (`GET .../environments/eval:getIamPolicy`, then `POST .../environments/eval:setIamPolicy`); the project-wide grant was chosen for simplicity and because the pipeline will later deploy to staging too.
+
+**Lesson:** "Apigee API Admin" alone is not enough to *deploy*; a CI deployer needs a role with `apigee.deployments.create` on the target environment.
+
+**Also observed:** pasting multi-line PowerShell commands into the terminal can merge lines, and `!` (the Claude Code "run in session" prefix) is not valid PowerShell. Run long commands as a single line.
+
 ### Apigee org reference (checked Day 3)
 
 | Item | Value |
@@ -769,7 +789,8 @@ GitHub Actions run ──OIDC token──▶ WIF pool/provider ──(repo check
 |----------|------|---------|
 | API | `sts.googleapis.com` | Security Token Service, exchanges GitHub's token for a Google token (`iam` and `iamcredentials` were already enabled) |
 | Service account | `github-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com` | Identity the pipeline deploys as |
-| Project IAM role | `roles/apigee.apiAdminV2` (Apigee API Admin) on the service account | Import and deploy proxies — nothing more |
+| Project IAM role | `roles/apigee.apiAdminV2` (Apigee API Admin) on the service account | Import proxy bundles (create revisions) |
+| Project IAM role | `roles/apigee.environmentAdmin` (Apigee Environment Admin) on the service account | Deploy revisions into environments and read deployment status — added after the first pipeline run failed with 403 (see 8.14) |
 | Workload Identity pool | `github-pool` (global) | Container for external identities Google trusts |
 | OIDC provider | `github-provider` in `github-pool` | Trusts tokens from `https://token.actions.githubusercontent.com`; condition `assertion.repository=='youssefessam2000/apigeeLocalDev'` rejects every other repository |
 | Service account IAM role | `roles/iam.workloadIdentityUser` for `principalSet://…/github-pool/attribute.repository/youssefessam2000/apigeeLocalDev` | Lets workflows from this repo act as the service account |
@@ -896,6 +917,13 @@ Only `APIGEE_APIKEY` is sensitive. The provider name and service account email a
 | 3 | Demonstrate that a failing assertion fails the test command | ✅ Done |
 | 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ✅ Done (GitHub variables: see 4.7) |
 | 5 | GitHub Actions workflow (lint, package, store artifact, deploy, API tests) | ✅ Done |
-| 6 | Push a change and observe the full pipeline run | ⏳ First run triggered by the commit that added the workflow |
+| 6 | Push a change and observe the full pipeline run | ⏳ In progress |
+
+### 9.8 Step 6 — End-to-end pipeline runs
+
+| Run | Trigger | Build job | Deploy job | Notes |
+|-----|---------|-----------|------------|-------|
+| 1 | Push `820965d` (workflow added) | ✅ Lint 0 errors, bundle packaged and stored | ❌ Google login ✅, import ✅ (revision 3), deploy `403` | Missing deploy permission (8.14); fixed by adding Apigee Environment Admin |
+| 2 | Push of the commit documenting 8.14 | ⏳ | ⏳ | Expected: deploy as revision 4, 8/8 API assertions pass |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
