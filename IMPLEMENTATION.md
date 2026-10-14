@@ -753,13 +753,99 @@ The key is read from an environment variable rather than `--env-var` on the npm 
 
 To repeat the demo: change `status(200)` to `status(418)`, run `npm run test:api:eval` and `echo $LASTEXITCODE` (expect `1`), then undo the change.
 
-### 9.5 Remaining Day 3 steps
+### 9.5 Step 4 — Keyless login for GitHub Actions (Workload Identity Federation) ✅
+
+**Why:** GitHub Actions needs a Google identity to deploy. Service-account key files are blocked in this project (org policy `iam.disableServiceAccountKeyCreation` is enforced), and keys are long-lived secrets anyway. With **Workload Identity Federation (WIF)**, GitHub issues a short-lived OIDC token for each workflow run, Google's Security Token Service (STS) exchanges it for a short-lived Google token, and the workflow acts as a service account. No key is created or stored.
+
+```
+GitHub Actions run ──OIDC token──▶ WIF pool/provider ──(repo check)──▶ STS
+        ▲                                                          │
+        └──────── short-lived token as github-apigee-deployer ◀────┘ ──▶ Apigee API
+```
+
+**Resources created:**
+
+| Resource | Name | Purpose |
+|----------|------|---------|
+| API | `sts.googleapis.com` | Security Token Service, exchanges GitHub's token for a Google token (`iam` and `iamcredentials` were already enabled) |
+| Service account | `github-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com` | Identity the pipeline deploys as |
+| Project IAM role | `roles/apigee.apiAdminV2` (Apigee API Admin) on the service account | Import and deploy proxies — nothing more |
+| Workload Identity pool | `github-pool` (global) | Container for external identities Google trusts |
+| OIDC provider | `github-provider` in `github-pool` | Trusts tokens from `https://token.actions.githubusercontent.com`; condition `assertion.repository=='youssefessam2000/apigeeLocalDev'` rejects every other repository |
+| Service account IAM role | `roles/iam.workloadIdentityUser` for `principalSet://…/github-pool/attribute.repository/youssefessam2000/apigeeLocalDev` | Lets workflows from this repo act as the service account |
+
+**Commands** (PowerShell; 4.1–4.4 were run by Youssef, 4.5–4.6 by Claude):
+
+```powershell
+# 4.0 Variables
+$PROJECT_ID     = "project-953dc129-1db1-4aea-ae3"
+$PROJECT_NUMBER = "445485313308"
+$REPO           = "youssefessam2000/apigeeLocalDev"
+$SA_NAME        = "github-apigee-deployer"
+$SA_EMAIL       = "$SA_NAME@$PROJECT_ID.iam.gserviceaccount.com"
+$POOL           = "github-pool"
+$PROVIDER       = "github-provider"
+gcloud config set project $PROJECT_ID
+
+# 4.1 Enable the Security Token Service API
+gcloud services enable sts.googleapis.com
+
+# 4.2 Create the service account
+gcloud iam service-accounts create $SA_NAME --display-name="GitHub Actions Apigee deployer"
+
+# 4.3 Allow it to deploy Apigee proxies
+gcloud projects add-iam-policy-binding $PROJECT_ID --member="serviceAccount:$SA_EMAIL" --role="roles/apigee.apiAdminV2" --condition=None
+
+# 4.4 Create the Workload Identity pool
+gcloud iam workload-identity-pools create $POOL --location="global" --display-name="GitHub Actions pool"
+
+# 4.5 Create the GitHub OIDC provider, limited to this repository
+gcloud iam workload-identity-pools providers create-oidc $PROVIDER --location="global" --workload-identity-pool=$POOL --display-name="GitHub provider" --issuer-uri="https://token.actions.githubusercontent.com" --attribute-mapping="google.subject=assertion.sub,attribute.repository=assertion.repository,attribute.ref=assertion.ref" --attribute-condition="assertion.repository=='$REPO'"
+
+# 4.6 Let workflows from this repository act as the service account (uses the project NUMBER)
+gcloud iam service-accounts add-iam-policy-binding $SA_EMAIL --role="roles/iam.workloadIdentityUser" --member="principalSet://iam.googleapis.com/projects/$PROJECT_NUMBER/locations/global/workloadIdentityPools/$POOL/attribute.repository/$REPO"
+```
+
+| Flag (4.5) | Meaning |
+|------------|---------|
+| `--issuer-uri` | Accept tokens issued by GitHub Actions |
+| `--attribute-mapping` | Copy the token's subject, repository and branch (`ref`) into Google attributes |
+| `--attribute-condition` | Security lock: only tokens from `youssefessam2000/apigeeLocalDev` are accepted |
+
+**Verification:**
+
+| Check | Result |
+|-------|--------|
+| `gcloud services list --enabled` | `sts.googleapis.com` enabled |
+| Service account roles | `roles/apigee.apiAdminV2` |
+| Pool `github-pool` | `ACTIVE` |
+| Provider `github-provider` | `ACTIVE`, condition `assertion.repository=='youssefessam2000/apigeeLocalDev'` |
+| Service account IAM policy | `roles/iam.workloadIdentityUser` → `principalSet://iam.googleapis.com/projects/445485313308/locations/global/workloadIdentityPools/github-pool/attribute.repository/youssefessam2000/apigeeLocalDev` |
+
+The real end-to-end test of this setup is the first workflow run in step 5.
+
+#### 4.7 GitHub repository variables and secret (done in the GitHub web UI)
+
+Repository → **Settings → Secrets and variables → Actions**:
+
+| Type | Name | Value |
+|------|------|-------|
+| Variable | `GCP_WIF_PROVIDER` | `projects/445485313308/locations/global/workloadIdentityPools/github-pool/providers/github-provider` |
+| Variable | `GCP_SERVICE_ACCOUNT` | `github-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com` |
+| Variable | `APIGEE_ORG` | `project-953dc129-1db1-4aea-ae3` |
+| Variable | `APIGEE_ENV` | `eval` |
+| Variable | `APIGEE_BASE_URL` | `https://8.228.239.128.nip.io` |
+| **Secret** | `APIGEE_APIKEY` | API key of `helloworld-app` (Apigee console → Distribution → Apps) |
+
+Only `APIGEE_APIKEY` is sensitive. The provider name and service account email are identifiers, not credentials: they are useless outside workflows from this repository. Switching the pipeline to staging later means changing `APIGEE_ENV` to `stagin` and `APIGEE_BASE_URL` to the staging hostname.
+
+### 9.6 Remaining Day 3 steps
 
 | # | Step | Status |
 |---|------|--------|
 | 1 | Deploy `helloworld` to eval with Maven | ✅ Done |
 | 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ✅ Done |
 | 3 | Demonstrate that a failing assertion fails the test command | ✅ Done |
-| 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ⏳ Next |
+| 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ✅ Done (GitHub variables: see 4.7) |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
