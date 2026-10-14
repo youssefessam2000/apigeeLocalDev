@@ -734,13 +734,32 @@ npm run test:api:eval
 
 The key is read from an environment variable rather than `--env-var` on the npm command line because of issue 8.13. GitHub Actions will provide it the same way, from a repository secret.
 
-### 9.4 Remaining Day 3 steps
+### 9.4 Step 3 — Test failure handling ✅
+
+**Goal:** prove that a failing test makes the command exit non-zero, so a pipeline stops instead of continuing.
+
+**What was done:** In `tests/postman/hello.postman_collection.json`, the happy-path assertion was temporarily changed from `pm.response.to.have.status(200)` to `pm.response.to.have.status(418)`, both test commands were run, then the change was reverted (no commit).
+
+| Run | Command | Assertions failed | Exit code |
+|-----|---------|-------------------|-----------|
+| Before (unchanged) | `npm run test:api:eval` | 0 / 8 | `0` |
+| Before (unchanged) | `npm test` (lint + emulator tests) | 0 / 8 | `0` |
+| Broken assertion | `npm run test:api:eval` | 1 / 8 — *expected response to have status code 418 but got 200* | `1` |
+| Broken assertion | `npm test` | 1 / 8 (lint still 0 errors) | `1` |
+| After revert | `npm run test:api:eval` | 0 / 8 | `0` |
+| After revert | `npm test` | 0 / 8 | `0` |
+
+**How it stops a pipeline:** Newman exits with code `1` when any assertion fails, `run-cloud.js` / `run-local.js` pass that exit code on, and `npm test` uses `&&`, so nothing after a failed step runs. GitHub Actions marks a step as failed on any non-zero exit code and skips the following steps.
+
+To repeat the demo: change `status(200)` to `status(418)`, run `npm run test:api:eval` and `echo $LASTEXITCODE` (expect `1`), then undo the change.
+
+### 9.5 Remaining Day 3 steps
 
 | # | Step | Status |
 |---|------|--------|
 | 1 | Deploy `helloworld` to eval with Maven | ✅ Done |
 | 2 | Create cloud API product, developer and app; add `eval` Postman environment; run Newman against eval | ✅ Done |
-| 3 | Demonstrate that a failing assertion fails the test command | ⏳ Next |
-| 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ⏳ |
+| 3 | Demonstrate that a failing assertion fails the test command | ✅ Done |
+| 4 | Workload Identity Federation + deploy service account (service-account keys are blocked by the `iam.disableServiceAccountKeyCreation` org policy) | ⏳ Next |
 | 5 | GitHub Actions workflow: lint → package → store artifact → deploy to eval → API tests | ⏳ |
 | 6 | Push a change and observe the full pipeline run | ⏳ |
