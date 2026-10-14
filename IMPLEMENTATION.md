@@ -574,6 +574,56 @@ Problems found while building and verifying Day 1 and Day 2, and how each was re
 
 **Solution:** Stopped tracking the folder with `git rm -r --cached target`. The files stay on disk and the `.gitignore` rule now applies, so regenerated emulator data no longer shows as changes. Emulator keys are local-only, so the keys already in history are low risk. `mvn clean` still deletes the emulator test data on disk; redeploy the test bundle from Cloud Code if that happens.
 
+### 8.9 `mvn` / `java` / `gcloud` not found in the VS Code terminal (Day 3 prep)
+
+**Issue:** After installing Maven, the JDK and the Google Cloud CLI, the commands were still "not recognized" in the VS Code terminal, although the installers had added them to `PATH`.
+
+**Solution:** VS Code reads `PATH` once at startup. Closing **all** VS Code windows and reopening fixed it. Without a restart, the current terminal can reload `PATH` with:
+
+```powershell
+$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')
+```
+
+### 8.10 gcloud could not see the Apigee project (Day 3 prep)
+
+**Issue:** `gcloud config set project project-953dc129-1db1-4aea-ae3` and `gcloud projects describe` returned *"does not have permission to access projects instance"*. gcloud reported the active account as `youssef.essam1955@gmail.com` (the project owner), but the token it actually used belonged to a different Google account, which has no projects. Later every command failed with `invalid_grant: Token has been expired or revoked`.
+
+**Root cause:** The **Cloud Code** VS Code extension keeps its own Google login in `%LOCALAPPDATA%\google-vscode-extension\auth\application_default_credentials.json` (created on Day 1 with another account). In VS Code terminals it sets gcloud's `auth/credential_file_override` to that file, and right after each `gcloud auth login` its background `gcloud config config-helper` call stored those credentials under the new account name. Running `gcloud auth revoke --all` inside VS Code then revoked the Cloud Code credentials, so every call failed.
+
+**Solution:**
+1. In VS Code: `Ctrl+Shift+P` → **Cloud Code: Sign In** with the project owner account. This replaces the Cloud Code credentials file.
+2. Ran `gcloud auth login` from a normal PowerShell window (outside VS Code) with the same account.
+3. Verified the real identity behind the token, not just the label shown by `gcloud auth list`:
+
+```powershell
+$t = gcloud auth print-access-token
+curl.exe -s "https://oauth2.googleapis.com/tokeninfo?access_token=$t"   # "email" must be the project owner
+gcloud projects describe project-953dc129-1db1-4aea-ae3                  # project details, no permission error
+```
+
+**Lesson:** When gcloud and Cloud Code are both used, sign both in with the same account, and do not run `gcloud auth revoke` from a VS Code terminal.
+
+### 8.11 Staging hostname has no valid TLS certificate (Day 3 prep, open)
+
+**Issue:** `https://staging.8.228.239.128.nip.io` fails certificate validation (`curl` exit code 60). The load balancer's Google-managed certificate covers only `8.228.239.128.nip.io` (the eval hostname).
+
+**Solution (pending):** Create a Google-managed certificate covering both hostnames and attach it to the Apigee load balancer. Until then, Day 3 uses the **eval** environment only; `--insecure` in Newman would also work but disables certificate checks.
+
+### 8.12 Staging environment is named `stagin` (Day 3 prep, accepted)
+
+**Issue:** The Apigee environment was created as `stagin`, not `staging`. Its environment group is `staging-group` (`staging.8.228.239.128.nip.io`). Apigee environments cannot be renamed.
+
+**Solution:** Kept as is for the POC. When switching to staging, use `APIGEE_ENV=stagin`.
+
+### Apigee org reference (checked Day 3)
+
+| Item | Value |
+|------|-------|
+| Org / project | `project-953dc129-1db1-4aea-ae3` (Apigee X evaluation, expires **2026-12-10**) |
+| Environments | `eval`, `stagin` |
+| Environment groups | `eval-group` → `8.228.239.128.nip.io`; `staging-group` → `staging.8.228.239.128.nip.io` |
+| Other proxies on eval | `hello-world` (`/hello-world`), `oauth-v1` (`/oauth/v1`) — no base-path conflict with `/helloworld` |
+
 ---
 
 **Next:** Day 3 — CI Pipeline (GitHub Actions), automated deployment to non-production, end-to-end pipeline run.
