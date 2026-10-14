@@ -10,77 +10,102 @@
   <version>1.0.0</version>
   <packaging>pom</packaging>
 
-  <name>helloworld Apigee Proxy</name>
-  <description>CI/CD POC — helloworld proxy with API key, quota and XML-to-JSON</description>
+  <!-- The Apigee plugin uses <name> as the proxy name in the org -->
+  <name>helloworld</name>
+  <description>CI/CD POC - helloworld proxy with API key, quota and XML-to-JSON</description>
 
   <properties>
-    <apigee.deploy.plugin.version>2.4.4</apigee.deploy.plugin.version>
-    <!-- Override on command line: -Dapigee.org=my-org -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <apigee.deploy.plugin.version>2.5.2</apigee.deploy.plugin.version>
+    <apigee.proxy.directory>src/main/apigee/apiproxies/helloworld/apiproxy</apigee.proxy.directory>
+
+    <!-- Values read from environment variables; override with -Dapigee.org=... etc. -->
     <apigee.org>${env.APIGEE_ORG}</apigee.org>
     <apigee.env>${env.APIGEE_ENV}</apigee.env>
-    <!-- Use access token from: gcloud auth print-access-token -->
+    <!-- Access token from: gcloud auth print-access-token -->
     <apigee.bearer>${env.APIGEE_TOKEN}</apigee.bearer>
+    <apigee.apiversion>v1</apigee.apiversion>
+    <apigee.authtype>oauth</apigee.authtype>
     <apigee.options>override</apigee.options>
-    <apigee.apitype>apiproxy</apigee.apitype>
-    <apigee.proxy.directory>src/main/apigee/apiproxies/helloworld</apigee.proxy.directory>
   </properties>
 
   <profiles>
     <!-- =========================================================
-         dev  — local Apigee Emulator (no real deployment)
-         Usage: mvn install -P dev
+         dev - local Apigee Emulator
+         Use for packaging only (mvn package -P dev). The emulator does
+         not expose the Apigee management API, so deploy it with Cloud Code.
          ========================================================= -->
     <profile>
       <id>dev</id>
       <properties>
+        <apigee.profile>dev</apigee.profile>
         <apigee.env>dev</apigee.env>
         <apigee.hosturl>http://localhost:8998</apigee.hosturl>
-        <apigee.options>override</apigee.options>
       </properties>
     </profile>
 
     <!-- =========================================================
-         nonprod — Apigee X non-production environment
-         Usage:
-           export APIGEE_ORG=my-org
-           export APIGEE_ENV=dev
-           export APIGEE_TOKEN=$(gcloud auth print-access-token)
+         nonprod - Apigee X non-production environment
+         Usage (PowerShell):
+           $env:APIGEE_ORG="my-org"
+           $env:APIGEE_ENV="my-env"
+           $env:APIGEE_TOKEN=(gcloud auth print-access-token)
            mvn install -P nonprod
          ========================================================= -->
     <profile>
       <id>nonprod</id>
       <properties>
+        <apigee.profile>nonprod</apigee.profile>
         <apigee.hosturl>https://apigee.googleapis.com</apigee.hosturl>
-        <apigee.options>override</apigee.options>
       </properties>
     </profile>
   </profiles>
 
   <build>
     <plugins>
+      <!-- Copy the proxy bundle to target/apiproxy, where the Apigee plugin expects it -->
       <plugin>
-        <groupId>com.apigee.edge</groupId>
-        <artifactId>apigee-deploy-maven-plugin</artifactId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+        <executions>
+          <execution>
+            <id>copy-proxy-bundle</id>
+            <phase>package</phase>
+            <goals>
+              <goal>copy-resources</goal>
+            </goals>
+            <configuration>
+              <overwrite>true</overwrite>
+              <outputDirectory>${project.basedir}/target/apiproxy</outputDirectory>
+              <resources>
+                <resource>
+                  <directory>${apigee.proxy.directory}</directory>
+                </resource>
+              </resources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Apigee Deploy Maven Plugin: configure = zip bundle, deploy = import + deploy -->
+      <plugin>
+        <groupId>io.apigee.build-tools.enterprise4g</groupId>
+        <artifactId>apigee-edge-maven-plugin</artifactId>
         <version>${apigee.deploy.plugin.version}</version>
         <executions>
           <execution>
-            <id>deploy-proxy</id>
+            <id>configure-bundle</id>
+            <phase>package</phase>
+            <goals>
+              <goal>configure</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>deploy-bundle</id>
             <phase>install</phase>
             <goals>
               <goal>deploy</goal>
             </goals>
-            <configuration>
-              <server>apigeeapi</server>
-              <org>${apigee.org}</org>
-              <env>${apigee.env}</env>
-              <hosturl>${apigee.hosturl}</hosturl>
-              <apitype>${apigee.apitype}</apitype>
-              <options>${apigee.options}</options>
-              <bearer>${apigee.bearer}</bearer>
-              <apigeeAPIVersion>googleapi</apigeeAPIVersion>
-              <buildDirectory>target</buildDirectory>
-              <directory>${apigee.proxy.directory}</directory>
-            </configuration>
           </execution>
         </executions>
       </plugin>

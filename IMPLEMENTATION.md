@@ -3,7 +3,7 @@
 **Project:** myapigeeworkspace  
 **Repository:** https://github.com/youssefessam2000/apigeeLocalDev  
 **Author:** Youssef  
-**Date:** October 2024  
+**Date:** October 2026  
 
 ---
 
@@ -401,13 +401,32 @@ Three test cases covering the full happy path and both negative scenarios:
 
 ### 5.5 Maven Packaging — `pom.xml`
 
-Uses the **Apigee Deploy Maven Plugin v2.4.4** for Apigee X/hybrid.
+Uses the **Apigee Deploy Maven Plugin v2.5.2** (`io.apigee.build-tools.enterprise4g:apigee-edge-maven-plugin`) for Apigee X/hybrid.
 
 ```xml
 <groupId>com.example.apigee</groupId>
 <artifactId>helloworld</artifactId>
 <version>1.0.0</version>
+<name>helloworld</name>  <!-- used by the plugin as the proxy name -->
 ```
+
+| Phase | Step | Output |
+|-------|------|--------|
+| `package` | `maven-resources-plugin` copies `src/main/apigee/apiproxies/helloworld/apiproxy` to `target/apiproxy` | `target/apiproxy/` |
+| `package` | `apigee-enterprise:configure` zips the bundle | `target/helloworld-1.0.0.zip` |
+| `install` | `apigee-enterprise:deploy` imports and deploys the bundle | New proxy revision in Apigee |
+
+> **Fix (Day 2 verification):** the first version of `pom.xml` referenced `com.apigee.edge:apigee-deploy-maven-plugin:2.4.4`, which does not exist on Maven Central, and had no `configure` step, so `mvn package` produced nothing. It was corrected to the official plugin coordinates and the setup from the plugin's sample project.
+
+#### Verification
+
+```powershell
+$env:APIGEE_ORG="test-org"; $env:APIGEE_ENV="eval"; $env:APIGEE_TOKEN="dummy"
+mvn package -P nonprod     # BUILD SUCCESS, target/helloworld-1.0.0.zip with 6 files under apiproxy/
+mvn install -P nonprod     # 401 Unauthorized from apigee.googleapis.com (expected with a dummy token)
+```
+
+Do not run `mvn clean`: it deletes `target/`, which also holds emulator test data.
 
 #### Maven Profiles
 
@@ -418,10 +437,10 @@ Uses the **Apigee Deploy Maven Plugin v2.4.4** for Apigee X/hybrid.
 
 #### Deploy to non-production
 
-```bash
-export APIGEE_ORG=your-org-name
-export APIGEE_ENV=dev
-export APIGEE_TOKEN=$(gcloud auth print-access-token)
+```powershell
+$env:APIGEE_ORG="your-org-name"
+$env:APIGEE_ENV="your-env"
+$env:APIGEE_TOKEN=(gcloud auth print-access-token)
 
 mvn install -P nonprod
 ```
@@ -446,6 +465,8 @@ mvn install -P nonprod
 
 | Commit | Message |
 |--------|---------|
+| `d785e59` | feat(tests): fetch emulator API key automatically for Newman runs |
+| `e9963a6` | docs: add IMPLEMENTATION.md covering Day 1 and Day 2 full implementation details |
 | `f6cc23e` | feat(day2): add Postman collection, Newman tests, Maven pom, and quality gate docs |
 | `f43efcc` | docs: add README with local setup, endpoint behavior, test cases, and known limitations |
 | `cd00baa` | fix: resolve apigeelint findings; document TD002/TD007 exceptions |
@@ -482,8 +503,8 @@ mvn install -P nonprod
 | 4 | Run tests from command line | ✅ Complete | `npm run test:api:local` via Newman, JUnit XML report output |
 | 5 | JS unit tests | ✅ N/A | No JavaScript resources in this proxy |
 | 6 | Define quality gates | ✅ Complete | Thresholds documented in README and this document |
-| 7 | Package the proxy | ✅ Complete | `pom.xml` with Apigee Deploy Maven Plugin v2.4.4 |
-| 8 | Validate deployment config | ✅ Complete | `dev` and `nonprod` Maven profiles, secrets via env vars |
+| 7 | Package the proxy | ✅ Complete | `mvn package -P nonprod` builds `target/helloworld-1.0.0.zip` (plugin v2.5.2) |
+| 8 | Validate deployment config | ✅ Complete | `dev` and `nonprod` profiles resolve; `mvn install` reaches the Apigee API (401 with dummy token); secrets via env vars |
 
 ---
 

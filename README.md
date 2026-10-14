@@ -143,19 +143,28 @@ This runs lint first, then the Newman test suite. The command exits non-zero if 
 
 ## Packaging & Deployment (Maven)
 
-The proxy is packaged and deployed using the [Apigee Deploy Maven Plugin v2.x](https://github.com/apigee/apigee-deploy-maven-plugin).
+The proxy is packaged and deployed using the [Apigee Deploy Maven Plugin v2.5.2](https://github.com/apigee/apigee-deploy-maven-plugin).
 
 ### Prerequisites
 
-- Java 11+
+- Java 11+ (JDK)
 - Maven 3.6+
+
+### Package the proxy
+
+```powershell
+$env:APIGEE_ORG="test-org"; $env:APIGEE_ENV="eval"; $env:APIGEE_TOKEN="dummy"
+mvn package -P nonprod     # builds target/helloworld-1.0.0.zip
+```
+
+Do not run `mvn clean`: it deletes `target/`, which also holds emulator test data.
 
 ### Deploy to non-production Apigee X
 
-```bash
-export APIGEE_ORG=your-org-name
-export APIGEE_ENV=dev
-export APIGEE_TOKEN=$(gcloud auth print-access-token)
+```powershell
+$env:APIGEE_ORG="your-org-name"
+$env:APIGEE_ENV="your-env"
+$env:APIGEE_TOKEN=(gcloud auth print-access-token)
 
 mvn install -P nonprod
 ```
@@ -164,7 +173,7 @@ mvn install -P nonprod
 
 | Profile | Target | Notes |
 |---------|--------|-------|
-| `dev` | Local emulator (`localhost:8998`) | For local packaging validation |
+| `dev` | Local emulator (`localhost:8998`) | Packaging only (`mvn package -P dev`); deploy to the emulator with Cloud Code |
 | `nonprod` | Apigee X non-production | Requires `APIGEE_ORG`, `APIGEE_ENV`, `APIGEE_TOKEN` env vars |
 
 **Security:** Never commit credentials or tokens. Always use environment variables or workload identity federation.
