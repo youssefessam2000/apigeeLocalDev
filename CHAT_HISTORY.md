@@ -32,6 +32,7 @@ Open Claude Code and say, for example:
 - After every step: document it in `IMPLEMENTATION.md` (commands, what each part does, results, issues) and push to `main` directly. One branch only (`main`); short-lived demo branches are deleted afterwards.
 - `.md` and `.csv` files are learning material and must **not** trigger the pipeline (`paths-ignore` in the workflow). Only code changes run CI/CD.
 - Focus is Day 2 onward; Day 1 details are not needed.
+- GCP setup steps are documented as **Cloud Console (UI) steps** (menu path, fields, values), not gcloud commands. Claude may still verify from the terminal.
 - Never commit API keys or tokens (`git grep` check before committing).
 - Role grants (IAM) and Secret Manager writes are blocked for Claude by the Claude Code safety check: Claude provides a **single-line** command and Youssef runs it in the VS Code terminal (without the `!` prefix).
 - In Windows PowerShell, use one-line commands; multi-line pastes can merge lines.
@@ -123,3 +124,4 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 5. Decided to keep **one repository** for Cloud Build (a second repo would deploy the same proxy to the same `eval` environment and break traceability). Created and pushed the annotated tag `github-actions-final` on `456c36a` to keep the GitHub Actions version (`IMPLEMENTATION.md` 10.3).
 6. Step 2 done: Youssef created `cloudbuild-apigee-deployer` and granted the 4 project roles; Claude verified them.
 7. Step 3: Claude created bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (us-west1, private). Secret creation was blocked for Claude and Youssef's PowerShell one-liner errored, so Youssef created `apigee-helloworld-apikey` in the console (issue 8.15); Claude verified it matches the Apigee key by fingerprint. Youssef granted Storage Object Admin on the bucket. Next: step 4.
+8. Youssef asked for GCP steps to be documented as Cloud Console (UI) steps instead of gcloud commands. Rewrote migration steps 1–3 in `IMPLEMENTATION.md` 10.3 as UI steps and added step 4 (connect GitHub to Cloud Build, 2nd gen connection `github-conn` in us-west1) as the next step.

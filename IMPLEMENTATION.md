@@ -1125,10 +1125,10 @@ Export options:
 | Step | Date | Result |
 |------|------|--------|
 | 0. Tag the GitHub Actions state | 2026-10-15 | Annotated tag `github-actions-final` on `456c36a`, pushed. See below. |
-| 1. Enable APIs | 2026-10-15 | Already enabled: `gcloud services list --enabled` showed `cloudbuild.googleapis.com` and `secretmanager.googleapis.com`. Nothing to do. |
+| 1. Enable APIs | 2026-10-15 | Already enabled (Cloud Build API, Secret Manager API). Nothing to do. |
 | 2. Service account + roles | 2026-10-15 | Youssef created `cloudbuild-apigee-deployer` and granted 4 project roles. Verified by Claude. |
 | 3. Secret + bucket | 2026-10-15 | Secret `apigee-helloworld-apikey` (created by Youssef in the console, verified to match the Apigee key); bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (created by Claude); bucket role granted by Youssef. |
-| 4. Connect GitHub to Cloud Build | — | Next (Youssef, browser). |
+| 4. Connect GitHub to Cloud Build | — | Next (Youssef, console — see Step 4 below). |
 
 **Step 0 — tag the GitHub Actions version**
 
@@ -1153,72 +1153,90 @@ git diff github-actions-final main -- .github cloudbuild*.yaml   # compare the p
 
 On GitHub the tag appears under **Code → Tags** and can be downloaded as a zip.
 
-**Step 2 — Cloud Build service account and roles** (run by Youssef; role grants are blocked for Claude)
+> The GCP steps below are written as **Cloud Console (UI) steps**. Console: https://console.cloud.google.com (project `project-953dc129-1db1-4aea-ae3` selected in the top bar). "☰" is the navigation menu at the top left.
 
-```powershell
-gcloud iam service-accounts create cloudbuild-apigee-deployer --display-name="Cloud Build Apigee deployer" --project=project-953dc129-1db1-4aea-ae3
-gcloud projects add-iam-policy-binding project-953dc129-1db1-4aea-ae3 --member="serviceAccount:cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com" --role="roles/apigee.apiAdminV2" --condition=None
-# same command again with: roles/apigee.environmentAdmin, roles/secretmanager.secretAccessor, roles/logging.logWriter
-```
+**Step 1 — Enable the Cloud Build and Secret Manager APIs**
 
-| Part | What it does |
-|------|--------------|
-| `service-accounts create` | Creates the identity Cloud Build runs as. A user-managed account (instead of the default Cloud Build account) has only the roles we give it. |
-| `add-iam-policy-binding ... --member=serviceAccount:... --role=...` | Grants one role on the whole project. `--condition=None` = no IAM condition (avoids an interactive prompt). |
-| `roles/apigee.apiAdminV2` | Import proxies and create revisions (same as the GitHub deployer). |
-| `roles/apigee.environmentAdmin` | Deploy a revision to an environment; without it deploys fail with 403 (issue 8.14). |
-| `roles/secretmanager.secretAccessor` | Read the API key secret during the post-deploy tests. |
-| `roles/logging.logWriter` | Write build logs to Cloud Logging (needed when a build uses a user-managed service account). |
+1. ☰ → **APIs & Services → Library**.
+2. Search **Cloud Build API** → open it → **Enable**.
+3. Search **Secret Manager API** → open it → **Enable**.
+4. Check: ☰ → **APIs & Services → Enabled APIs & services** lists both.
 
-Verify:
+Result: both were already enabled (button showed **Manage** instead of **Enable**). Nothing to do.
 
-```powershell
-gcloud projects get-iam-policy project-953dc129-1db1-4aea-ae3 --flatten="bindings[].members" --filter="bindings.members:cloudbuild-apigee-deployer" --format="value(bindings.role)"
-```
+**Step 2 — Create the Cloud Build service account and give it roles** (Youssef)
 
-Result: the four roles above.
+A service account is the identity the build runs as. A dedicated one (instead of the default Cloud Build account) has only the permissions we give it.
 
-**Step 3 — API key in Secret Manager, bundle bucket**
+1. ☰ → **IAM & Admin → Service Accounts** → **+ Create service account**.
+2. **Service account details:**
+   | Field | Value |
+   |-------|-------|
+   | Service account name | `Cloud Build Apigee deployer` |
+   | Service account ID | `cloudbuild-apigee-deployer` (email becomes `cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com`) |
+   → **Create and continue**.
+3. **Grant this service account access to project** — add these roles (**+ Add another role** for each):
+   | Role (as shown in the UI) | Why |
+   |---------------------------|-----|
+   | **Apigee API Admin** | Import proxies and create revisions (same as the GitHub deployer) |
+   | **Apigee Environment Admin** | Deploy a revision to an environment; without it deploy fails with 403 (issue 8.14) |
+   | **Secret Manager Secret Accessor** | Read the API key secret for the post-deploy tests |
+   | **Logs Writer** | Write build logs to Cloud Logging (required when a build uses its own service account) |
+   → **Continue** → **Done** (skip "Grant users access").
+4. Check: ☰ → **IAM & Admin → IAM** → filter by `cloudbuild-apigee-deployer` → the four roles are listed.
 
-*Secret* (Youssef, in the console — Security → Secret Manager → Create secret):
+Checked by Claude (terminal): the account exists and has exactly these four project roles.
 
-| Field | Value |
-|-------|-------|
-| Name | `apigee-helloworld-apikey` |
-| Value | The **Key** of app `helloworld-app` (Apigee → Distribution → Apps), no spaces or new line |
-| Replication | Automatic |
-| Labels | `app=helloworld`, `env=eval` |
+**Step 3a — Store the API key in Secret Manager** (Youssef)
 
-Secret Manager is a Google Cloud service: the secret is stored encrypted in the GCP project, readable only by principals with *Secret Manager Secret Accessor*, every read is audit-logged, and a changed key is added as a new version (the pipeline reads `latest`). It replaces the GitHub secret `APIGEE_APIKEY` once Cloud Build is live. Free tier: 6 active versions and 10,000 reads per month.
+Secret Manager is a Google Cloud service: the secret is stored encrypted inside the GCP project, only principals with *Secret Manager Secret Accessor* can read it, every read is audit-logged, and a changed key is added as a new **version** (the pipeline reads `latest`). It replaces the GitHub secret `APIGEE_APIKEY`. Free tier: 6 active versions and 10,000 reads per month.
 
-Verification (Claude) — compares SHA-256 fingerprints of the secret and the Apigee key, so the key is never printed:
+1. Get the key: ☰ → **Apigee → Distribution → Apps** → **`helloworld-app`** → **Credentials** → click the eye icon next to **Key** → copy it (the **Key**, not the Secret).
+2. ☰ → **Security → Secret Manager** → **+ Create secret**.
+   | Field | Value |
+   |-------|-------|
+   | Name | `apigee-helloworld-apikey` (the pipeline uses this exact name) |
+   | Secret value | Paste the key — **no space or new line** before/after |
+   | Replication policy | Automatic |
+   | Labels | `app` = `helloworld`, `env` = `eval` |
+   → **Create secret**.
+3. Check: the secret page shows **Version 1 — Enabled**.
 
-```bash
-gcloud secrets versions access latest --secret apigee-helloworld-apikey | sha256sum     # vs the hash of the approved key from the Apigee API
-```
+Checked by Claude (terminal): the secret's SHA-256 fingerprint matches the Apigee key's fingerprint (48 characters, no extra whitespace); the key itself was never printed.
 
-Result: match, 48 characters, no extra whitespace.
+**Step 3b — Create the bundle bucket** (created by Claude; UI steps for reference)
 
-*Bucket* (Claude):
+The pipeline stores each tested proxy zip here, one per commit (replaces GitHub artifacts).
 
-```bash
-gcloud storage buckets create gs://project-953dc129-1db1-4aea-ae3-apigee-bundles --location=us-west1 --uniform-bucket-level-access --public-access-prevention
-```
+1. ☰ → **Cloud Storage → Buckets** → **+ Create**.
+2. Fill in:
+   | Setting | Value | Why |
+   |---------|-------|-----|
+   | Name | `project-953dc129-1db1-4aea-ae3-apigee-bundles` | Bucket names are global, so the project ID is the prefix |
+   | Location type | **Region** → `us-west1 (Oregon)` | Same region as the Apigee org |
+   | Storage class | Standard | Default |
+   | Prevent public access | ✅ **Enforce public access prevention on this bucket** | The bucket can never be made public |
+   | Access control | **Uniform** | Permissions only through IAM, no per-object ACLs |
+   | Data protection | Defaults | — |
+   → **Create** (confirm the public-access prompt).
 
-| Part | What it does |
-|------|--------------|
-| `gs://<project>-apigee-bundles` | Bucket names are global, so the project ID is used as a prefix. The pipeline stores each tested bundle here per commit (replaces GitHub artifacts). |
-| `--location=us-west1` | Same region as the Apigee org (`analyticsRegion`). |
-| `--uniform-bucket-level-access` | Permissions only through IAM (no per-object ACLs). |
-| `--public-access-prevention` | The bucket can never be made public. |
+**Step 3c — Let the service account use the bucket** (Youssef)
 
-*Bucket permission* (Youssef):
+1. ☰ → **Cloud Storage → Buckets** → open `project-953dc129-1db1-4aea-ae3-apigee-bundles` → **Permissions** tab → **Grant access**.
+2. **New principals:** `cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com`
+3. **Role:** **Cloud Storage → Storage Object Admin** → **Save**.
 
-```powershell
-gcloud storage buckets add-iam-policy-binding gs://project-953dc129-1db1-4aea-ae3-apigee-bundles --member="serviceAccount:cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com" --role="roles/storage.objectAdmin"
-```
+Granted on **this bucket only**, so the build can upload/read bundles here but has no access to other buckets.
 
-`roles/storage.objectAdmin` on **this bucket only** lets the build upload and read bundles; it gives no access to other buckets.
+Checked by Claude (terminal): the bucket policy lists `roles/storage.objectAdmin` for the service account.
+
+**Step 4 — Connect the GitHub repository to Cloud Build** (Youssef) — *next*
+
+1. ☰ → **Cloud Build → Repositories** → **2nd gen** tab → **Create host connection**.
+2. Fill in: Provider **GitHub**, Region **us-west1**, Name `github-conn` → **Connect**.
+3. If asked to grant **Secret Manager Admin** to the Cloud Build service agent → **Grant** (Google's agent stores the GitHub login token as a secret).
+4. In the GitHub window: **Authorize** Google Cloud Build as `youssefessam2000`, then **Install** the Cloud Build GitHub app with **Only select repositories → `apigeeLocalDev`**.
+5. Back in the console the connection shows a green status → **Link repository** → select `youssefessam2000/apigeeLocalDev` → **Link**.
 
 **Migration plan:**
 
