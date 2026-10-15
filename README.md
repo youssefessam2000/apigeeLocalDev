@@ -7,6 +7,8 @@ A simple Apigee X proxy (`helloworld`) secured with an API key, with quota enfor
 ## Prerequisites
 
 > **New machine?** Follow [SETUP.md](SETUP.md) for a step-by-step install (Chocolatey, Node, JDK, Maven, gcloud, Docker, Cloud Code, apigeecli, Claude Code) and verification.
+>
+> **Build the Cloud Build pipeline yourself?** Follow [CICD_GUIDE.md](CICD_GUIDE.md) (console steps, practice checklist).
 
 | Tool | Purpose |
 |------|---------|
