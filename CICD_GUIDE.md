@@ -261,7 +261,9 @@ Idea: **build once in eval, then deploy the same revision to staging** — no re
 2. **Files:** `cloudbuild-promote.yaml` (resolve revision → deploy same revision via Apigee API → Newman → store reports) and `tests/postman/env/stagin.postman_environment.json`.
 3. **Trigger** `helloworld-promote`: Event **Manual invocation**, branch `main`, file `cloudbuild-promote.yaml`, ✅ Require approval, service account `cloudbuild-apigee-deployer`.
 4. Add `cloudbuild-promote.yaml` and the stagin env file to **ignored files** of `helloworld-deploy`, so editing them does not redeploy eval.
-5. **Run:** Triggers → `helloworld-promote` → **Run** (leave `_REVISION` empty = revision in eval) → History → **Approve** → check Apigee: same revision number deployed in `eval` and `stagin`.
+5. **Run:** Triggers → `helloworld-promote` → **Run** (leave `_REVISION` empty = revision in eval) → History → **Approve** → check Apigee: same revision number deployed in `eval` and `stagin`, and no new revision created.
+
+Expected (our run): certificate ACTIVE in ~6 min; promotion 3 min; revision 11 on both environments; staging tests 8/8; reports in `helloworld/promotions/stagin/rev-11-<build>/`.
 
 Do **not** skip certificate checks (`--insecure`) to make tests pass — fix the certificate instead.
 
@@ -302,3 +304,4 @@ Before calling the pipeline done, check:
 - [ ] Part 5 — two triggers + approval on `helloworld-deploy`
 - [ ] Part 6 — green PR, merge, approve, green deploy, red PR demo
 - [ ] Part 7 — revision, bucket files, HTML report opens, logs and report without the key
+- [ ] Part 7b — staging certificate ACTIVE, product has `stagin`, promote trigger run + approved, **same revision** on eval and stagin

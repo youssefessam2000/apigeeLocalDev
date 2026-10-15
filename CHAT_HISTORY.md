@@ -19,8 +19,8 @@ This file is the conversation log and the hand-off for the next session. Start w
 - The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
 - **Cloud Build migration complete (2026-10-15).** Pipeline = Cloud Build triggers `helloworld-pr` / `helloworld-deploy` (us-west1); GitHub Actions is manual-only (tag `github-actions-final`). Latest deploy: **revision 9** (`fbea836`).
-- **Day 4:** task 1 ✅, task 2 ✅, task 4 ✅, task 3 🟡 (design + `cloudbuild-promote.yaml` + trigger `helloworld-promote` done; demo waits for the staging certificate). Latest deploy: **revision 11** on eval.
-- **Next action:** Youssef: rotate the key; add a Google-managed certificate for `staging.8.228.239.128.nip.io` to the load balancer; add `stagin` to `helloworld-product` (steps in `IMPLEMENTATION.md` 11.3.5). Then run `helloworld-promote`.
+- **Day 4:** tasks 1, 2, 3, 4 ✅ (approval, HTML report, promotion eval → stagin, config & secret checklist). **Revision 11** deployed on **eval and stagin**. Issue 8.11 (staging certificate) resolved.
+- **Next action:** rotate the `helloworld-app` key (still open), then Day 4 task 6 (documentation & release notes), then 5, 7, 8 — see `IMPLEMENTATION.md` 11.
 
 ### To continue in a new Claude Code session
 
@@ -75,7 +75,7 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 |------|--------|
 | Cloud Build migration | Next (10.3) |
 | Day 4 tasks | Planned (10.4) |
-| Staging TLS certificate | Open (8.11); staging work waits for it |
+| Staging TLS certificate | ✅ Resolved 2026-10-15 (second Google-managed certificate) |
 | Pipeline supports only `helloworld` | Backlog (multi-proxy: one Maven module per proxy) |
 | GitHub Actions + WIF resources | Will be disabled after Cloud Build works; WIF pool can be deleted later |
 
@@ -137,3 +137,5 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 15. Day 4 task 2: Claude added `newman-reporter-htmlextra` 1.23.1, made `run-cloud.js` write an HTML report and mask the key in both report files, and made `store-report` upload the HTML and print its link (`c0849d8`). Youssef approved the build → **revision 11**, 8/8 passed, `newman-eval.html` (80 KB) stored with the bundle, key in neither log nor report. Documented in `IMPLEMENTATION.md` 11.2 and `CICD_GUIDE.md`.
 16. Day 4 task 4: Claude reviewed config and secrets (read-only). No target servers/KVMs/keystores/shared flows in Apigee; environment values are substitutions. Secret scans: Git current + all 42 commits clean of real keys/tokens (only old emulator keys, 8.8); bucket (17 objects, bundles unzipped) clean; Cloud Build logs: only `a6b473c6` has the key. No service-account keys anywhere. Flagged: rotate key, delete GitHub secret / WIF / `github-apigee-deployer` later, review `apigeeowner` (Owner) and `apigee-cicd`. Checklist in `IMPLEMENTATION.md` 11.4; `CICD_GUIDE.md` Part 8.
 17. Day 4 task 3: staging is attached and routed; only the TLS cert (8.11) and the product environment are missing. Claude wrote `cloudbuild-promote.yaml` (promote the revision deployed in eval to stagin via the Apigee API, no rebuild; refuses untested revisions; Newman; reports in `helloworld/promotions/...`) and `stagin.postman_environment.json`, created manual trigger `helloworld-promote` (approval required) and added the promotion files to `helloworld-deploy`'s ignored files (via describe → edit → import). A first version used Newman `--insecure`; the safety check blocked it, so the certificate will be fixed instead. Design in `IMPLEMENTATION.md` 11.3, guide Part 7b.
+18. Youssef added the Google-managed certificate `apigee-ssl-cert-staging` (free; ACTIVE in ~6 min) and `stagin` to `helloworld-product`. Claude verified: staging serves its own valid certificate, eval unchanged. Issue 8.11 resolved.
+19. Youssef ran and approved `helloworld-promote` (build `99b55021`): revision 11 promoted eval → stagin, deployment READY, staging tests 8/8 with normal TLS checks, reports + `promotion-info.json` in `helloworld/promotions/stagin/rev-11-…/`. Revision 11 on both environments, no new revision created. Task 3 ✅ (`IMPLEMENTATION.md` 11.3.6).

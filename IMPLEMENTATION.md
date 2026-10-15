@@ -651,11 +651,13 @@ gcloud projects describe project-953dc129-1db1-4aea-ae3                  # proje
 
 **Lesson:** When gcloud and Cloud Code are both used, sign both in with the same account, and do not run `gcloud auth revoke` from a VS Code terminal.
 
-### 8.11 Staging hostname has no valid TLS certificate (Day 3 prep, open)
+### 8.11 Staging hostname has no valid TLS certificate (Day 3 prep, **resolved 2026-10-15**)
 
 **Issue:** `https://staging.8.228.239.128.nip.io` fails certificate validation (`curl` exit code 60). The load balancer's Google-managed certificate covers only `8.228.239.128.nip.io` (the eval hostname).
 
-**Solution (pending):** Create a Google-managed certificate covering both hostnames and attach it to the Apigee load balancer. Until then, Day 3 uses the **eval** environment only; `--insecure` in Newman would also work but disables certificate checks.
+**Solution (done 2026-10-15, Day 4 task 3):** Youssef added a second Google-managed certificate `apigee-ssl-cert-staging` for `staging.8.228.239.128.nip.io` to the load balancer's HTTPS frontend (*Additional certificates*), keeping `apigee-ssl-cert` for eval. It went from PROVISIONING to **ACTIVE in ~6 minutes**. The load balancer now serves the right certificate per hostname (SNI). Verified: `staging.8.228.239.128.nip.io` presents CN `staging.8.228.239.128.nip.io`, issued by Google Trust Services, valid to 2027-01-13 (auto-renewed); eval unchanged. Steps in 11.3.5.
+
+**Lesson:** Do not use Newman `--insecure` to get around a certificate problem — a first promotion pipeline did, and the Claude Code safety check blocked it. Fix the certificate; it is free and quick.
 
 ### 8.12 Staging environment is named `stagin` (Day 3 prep, accepted)
 
@@ -735,8 +737,6 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 **Lesson:** When moving pipelines, check what the old platform did implicitly (here: secret masking). Prefer sending API keys in a header rather than the URL, so they do not show up in logs.
 
 ---
-
-<!-- 8.11 follow-up: fix planned in 11.3.5 (second Google-managed certificate on the load balancer). -->
 
 ## 9. Day 3 — Non-Production Deployment & CI
 
@@ -1402,7 +1402,7 @@ Push / merge to main ──► helloworld-deploy:  install → lint → package 
 |---|------------|-------------|---------------------|----------------|
 | 1 | Add controlled deployment stage | Non-production deployment stage | ✅ **Done 2026-10-15** (section 11.1) | — |
 | 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | ✅ **Done 2026-10-15** (section 11.2) | — |
-| 3 | Environment promotion design | Documented promotion path | Not started | dev → eval → staging → prod design; promote the same tested revision from `eval` to `stagin` |
+| 3 | Environment promotion design | Documented promotion path | ✅ **Done 2026-10-15** (section 11.3) | — |
 | 4 | Configuration and secret review | Config and secret checklist | ✅ **Done 2026-10-15** (section 11.4) | Follow-ups in 11.4 |
 | 5 | Optional performance test | Baseline results or documented deferral | Not started | Small k6 run on eval, or documented deferral |
 | 6 | Documentation and release notes | Complete project documentation | IMPLEMENTATION.md complete to Day 3 | OpenAPI file, README update, pipeline diagram, release notes |
@@ -1425,7 +1425,7 @@ Day 4 runs on the **Cloud Build** pipeline (10.3). Task list and plan: 10.4. A s
 |---|------|--------|
 | 1 | Add controlled deployment stage | ✅ Done (11.1) |
 | 2 | Run post-deployment tests in pipeline | ✅ Done (11.2) |
-| 3 | Environment promotion design | 🟡 Design + pipeline done; staging demo waits for the TLS certificate (11.3) |
+| 3 | Environment promotion design | ✅ Done (11.3) — revision 11 promoted eval → stagin |
 | 4 | Configuration and secret review | ✅ Done (11.4) |
 | 5 | Optional performance test | Pending |
 | 6 | Documentation and release notes | Pending |
@@ -1737,12 +1737,12 @@ The service account already has Apigee Environment Admin on the project, which c
 | `stagin` attached to the Apigee instance `eval-instance` | ✅ |
 | Environment group `staging-group` → hostname `staging.8.228.239.128.nip.io` → `stagin` | ✅ |
 | Request routing (ignoring the certificate) | ✅ reaches Apigee (404 — nothing deployed yet) |
-| **TLS certificate** for `staging.8.228.239.128.nip.io` | ❌ The load balancer `apigee-proxy-https-proxy` has only the Google-managed certificate `apigee-ssl-cert` for `8.228.239.128.nip.io` (issue 8.11) |
-| `helloworld-product` includes `stagin` | ❌ only `eval` → the key would get 401 on staging |
+| **TLS certificate** for `staging.8.228.239.128.nip.io` | ❌ → ✅ The load balancer had only `apigee-ssl-cert` for `8.228.239.128.nip.io` (issue 8.11); `apigee-ssl-cert-staging` added and **ACTIVE** |
+| `helloworld-product` includes `stagin` | ❌ → ✅ Youssef added `stagin` (environments now `eval, stagin`) |
 
 A first version of the pipeline ran the staging tests with Newman `--insecure` (no certificate check). The Claude Code safety check blocked pushing it ("TLS/Auth weaken"), and that was right: tests must not pass while users would get certificate errors. The certificate is fixed instead (next).
 
-**To finish the demo (Youssef, console):**
+**Steps done to finish the demo (Youssef, console):**
 
 1. **Staging certificate** — ☰ → **Network services → Load balancing** → the load balancer that uses `apigee-proxy-url-map` → **Edit** → **Frontend configuration** → the HTTPS frontend (IP `8.228.239.128`) → **Additional certificates → Add certificate → Create a new certificate**: name `apigee-ssl-cert-staging`, **Create Google-managed certificate**, domain `staging.8.228.239.128.nip.io` → **Create** → **Done** → **Update**. Keep `apigee-ssl-cert` as the primary certificate. Provisioning takes **15–60 minutes** (status `PROVISIONING` → `ACTIVE`); nip.io already points the name to the load balancer IP, so Google can validate it.
 2. **Product** — ☰ → **Apigee → Distribution → API products → `helloworld-product`** → **Edit** → Environments: add **`stagin`** → **Save**.
@@ -1750,5 +1750,41 @@ A first version of the pipeline ran the staging tests with Newman `--insecure` (
 
 ---
 
-**Next:** finish the task 3 demo (11.3.5), then task 6 — documentation and release notes.
+Checked by Claude after the steps: certificate **ACTIVE** after ~6 minutes; both certificates attached to `apigee-proxy-https-proxy`; eval still answers over HTTPS with its own certificate; staging answers with a verified certificate (no `--insecure`).
+
+The certificate is free: Google-managed certificates have no charge, and the load balancer already existed (created with the Apigee evaluation org). Works on the free trial.
+
+#### 11.3.6 Promotion demo (2026-10-15)
+
+**What Youssef did:** ☰ → **Cloud Build → Triggers** → `helloworld-promote` → **Run** (`_REVISION` empty) → **Run trigger** → **History** → build **Awaiting approval** → **Review → Approve**.
+
+| Item | Value |
+|------|-------|
+| Build | `99b55021` (`helloworld-promote`, source `main` at `7ab4dae`) |
+| Approved | 11:44:52 UTC by `youssef.essam1955@gmail.com` |
+| Ran | 11:44:53 → 11:48:05 UTC (3 min 12 s), all 5 steps ✅ |
+| `resolve-revision` | "Deployed in eval: 11" → "Promoting helloworld revision 11: eval -> stagin" |
+| `deploy` | `PROGRESSING` ×6 → **`READY`** (~1.5 min) |
+| `api-tests` | Against `https://staging.8.228.239.128.nip.io` with **normal certificate checks**: 200 with key (`apikey=***`), 401 without key, 401 with invalid key — **8 assertions, 0 failed** |
+| `store-report` | `gs://…-apigee-bundles/helloworld/promotions/stagin/rev-11-99b55021…/` → `promotion-info.json`, `newman-stagin.xml`, `newman-stagin.html` |
+| Key | Not in the log, not in the HTML report |
+
+**Proof that the same revision was promoted (no rebuild):**
+
+| Check | Result |
+|-------|--------|
+| Revision deployed in `eval` | **11** |
+| Revision deployed in `stagin` | **11** |
+| Highest revision of `helloworld` in the org | **11** — the promotion created no new revision |
+| `promotion-info.json` | `{"proxy":"helloworld","revision":"11","from_env":"eval","to_env":"stagin","commit":"7ab4dae…","build_id":"99b55021…","promoted_at":"2026-10-15T11:48:02Z"}` |
+
+Revision 11 was built by build `d9297e20` from commit `c0849d8` and tested on eval (11.2); exactly those bytes now run on staging.
+
+**How to check it yourself (console):** ☰ → **Apigee → Proxy development → API proxies → `helloworld`** → **Overview / Deployments** → `eval` and `stagin` both show **revision 11**.
+
+**Rollback example:** to put staging back on an older revision, run `helloworld-promote` with `_REVISION` = that revision — it must still be deployed in eval, otherwise the pipeline refuses (only tested revisions move up). For an emergency rollback outside that rule, use Apigee → `helloworld` → **Deploy** → choose the revision and environment.
+
+---
+
+**Next:** Day 4 task 6 — documentation and release notes (11.6).
 
