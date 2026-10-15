@@ -17,7 +17,7 @@ This file is the conversation log and the hand-off for the next session. Start w
 - Day 1 ✅, Day 2 ✅, Day 3 ✅ (all tasks checked against `Apigee_CICD_POC.csv`).
 - The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
-- **Next action:** Cloud Build migration (10.3) — steps 1–3 done (APIs, service account `cloudbuild-apigee-deployer`, secret `apigee-helloworld-apikey`, bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles`); next is step 4 (connect GitHub to Cloud Build in the browser). Then Day 4 (10.4).
+- **Next action:** Cloud Build migration (10.3) — steps 1–3 done (APIs, service account `cloudbuild-apigee-deployer`, secret `apigee-helloworld-apikey`, bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles`); steps 4–7 done (connection `github-conn`, files `cloudbuild.yaml` / `cloudbuild-deploy.yaml`, triggers `helloworld-pr` / `helloworld-deploy`, GitHub Actions manual-only) on branch `cloud-build-pipeline`; next is step 8: open the PR → `helloworld-pr` runs, then merge → `helloworld-deploy` deploys. Then Day 4 (10.4).
 
 ### To continue in a new Claude Code session
 
@@ -125,3 +125,5 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 6. Step 2 done: Youssef created `cloudbuild-apigee-deployer` and granted the 4 project roles; Claude verified them.
 7. Step 3: Claude created bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (us-west1, private). Secret creation was blocked for Claude and Youssef's PowerShell one-liner errored, so Youssef created `apigee-helloworld-apikey` in the console (issue 8.15); Claude verified it matches the Apigee key by fingerprint. Youssef granted Storage Object Admin on the bucket. Next: step 4.
 8. Youssef asked for GCP steps to be documented as Cloud Console (UI) steps instead of gcloud commands. Rewrote migration steps 1–3 in `IMPLEMENTATION.md` 10.3 as UI steps and added step 4 (connect GitHub to Cloud Build, 2nd gen connection `github-conn` in us-west1) as the next step.
+9. Step 4 done by Youssef (connection `github-conn`, repo linked); Claude verified it.
+10. Steps 5–7 by Claude: wrote `cloudbuild.yaml` (PR: lint, package) and `cloudbuild-deploy.yaml` (store bundle in GCS, deploy, Newman with Secret Manager key, store report); created triggers `helloworld-pr` and `helloworld-deploy` in us-west1; switched `ci.yml` to `workflow_dispatch` only. Pushed on branch `cloud-build-pipeline` (`1d9ba7a`) to test via a PR. A manual `gcloud builds submit` test failed with 403 on the `_cloudbuild` bucket (issue 8.16); testing through the triggers instead.

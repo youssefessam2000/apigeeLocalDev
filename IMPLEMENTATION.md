@@ -711,6 +711,16 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 ---
 
+### 8.16 Manual `gcloud builds submit` fails with 403 on the `_cloudbuild` bucket
+
+**Issue:** Testing `cloudbuild.yaml` with `gcloud builds submit --service-account=...cloudbuild-apigee-deployer...` failed: `cloudbuild-apigee-deployer ... does not have storage.objects.get access to ... project-953dc129-1db1-4aea-ae3_cloudbuild/source/...tgz`.
+
+**Root cause:** A manual submit uploads the local folder to the bucket `<project>_cloudbuild`, and the build's service account must read it. Our account only has access to the bundle bucket. Triggers do not need this: they fetch the source directly from GitHub.
+
+**Solution:** No extra permission added. The files are tested through the real triggers (PR, then merge). If manual submits are wanted later, grant the service account **Storage Object Viewer** on the `<project>_cloudbuild` bucket (Cloud Storage → bucket → Permissions → Grant access).
+
+---
+
 ## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
@@ -1128,7 +1138,11 @@ Export options:
 | 1. Enable APIs | 2026-10-15 | Already enabled (Cloud Build API, Secret Manager API). Nothing to do. |
 | 2. Service account + roles | 2026-10-15 | Youssef created `cloudbuild-apigee-deployer` and granted 4 project roles. Verified by Claude. |
 | 3. Secret + bucket | 2026-10-15 | Secret `apigee-helloworld-apikey` (created by Youssef in the console, verified to match the Apigee key); bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (created by Claude); bucket role granted by Youssef. |
-| 4. Connect GitHub to Cloud Build | — | Next (Youssef, console — see Step 4 below). |
+| 4. Connect GitHub to Cloud Build | 2026-10-15 | Youssef created connection `github-conn` (us-west1) and linked the repo. Verified by Claude: status COMPLETE, repo `youssefessam2000-apigeeLocalDev`. |
+| 5. Cloud Build files | 2026-10-15 | `cloudbuild.yaml` + `cloudbuild-deploy.yaml` written by Claude (branch `cloud-build-pipeline`, commit `1d9ba7a`). |
+| 6. Triggers | 2026-10-15 | `helloworld-pr` and `helloworld-deploy` created by Claude (us-west1). |
+| 7. GitHub Actions manual-only | 2026-10-15 | `ci.yml` now runs only on `workflow_dispatch` (same commit `1d9ba7a`). |
+| 8. Test | — | Next: open the PR `cloud-build-pipeline` → `main` (runs `helloworld-pr`), then merge (runs `helloworld-deploy`). |
 
 **Step 0 — tag the GitHub Actions version**
 
@@ -1230,13 +1244,86 @@ Granted on **this bucket only**, so the build can upload/read bundles here but h
 
 Checked by Claude (terminal): the bucket policy lists `roles/storage.objectAdmin` for the service account.
 
-**Step 4 — Connect the GitHub repository to Cloud Build** (Youssef) — *next*
+**Step 4 — Connect the GitHub repository to Cloud Build** (Youssef)
 
 1. ☰ → **Cloud Build → Repositories** → **2nd gen** tab → **Create host connection**.
 2. Fill in: Provider **GitHub**, Region **us-west1**, Name `github-conn` → **Connect**.
 3. If asked to grant **Secret Manager Admin** to the Cloud Build service agent → **Grant** (Google's agent stores the GitHub login token as a secret).
 4. In the GitHub window: **Authorize** Google Cloud Build as `youssefessam2000`, then **Install** the Cloud Build GitHub app with **Only select repositories → `apigeeLocalDev`**.
 5. Back in the console the connection shows a green status → **Link repository** → select `youssefessam2000/apigeeLocalDev` → **Link**.
+
+Checked by Claude (terminal): connection `github-conn` is **COMPLETE** and enabled, authorized as `youssefessam2000`; linked repository `youssefessam2000-apigeeLocalDev` → `https://github.com/youssefessam2000/apigeeLocalDev.git`.
+
+**Step 5 — The Cloud Build files** (Claude)
+
+Cloud Build reads a YAML file from the repo. Each **step** runs in its own container image; all steps share the folder `/workspace` (the checked-out repo), so files made by one step (e.g. `target/helloworld-1.0.0.zip`) are available to the next. Steps run in order and the build stops at the first step that fails.
+
+| File | Used by trigger | Steps |
+|------|-----------------|-------|
+| `cloudbuild.yaml` | `helloworld-pr` (pull request to `main`) | `install` (npm ci) → `lint` (apigeelint) → `package` (mvn package). **No deploy and no secrets**: PR code is not trusted until merged. |
+| `cloudbuild-deploy.yaml` | `helloworld-deploy` (push to `main`) | `install` → `lint` → `lint-report` → `package` → `build-info` → `store-bundle` → `get-token` → `deploy` → `api-tests` → `store-report` |
+
+`cloudbuild-deploy.yaml` step by step:
+
+| Step | Image | What it does |
+|------|-------|--------------|
+| `install` | `node:22` | `npm ci` — exact versions of apigeelint and Newman from `package-lock.json` |
+| `lint` | `node:22` | `npm run lint` — **quality gate**: lint errors stop the build |
+| `lint-report` | `node:22` | Saves `reports/apigeelint-baseline.json` |
+| `package` | `maven:3.9.9-eclipse-temurin-17` | `mvn package -P nonprod` → `target/helloworld-1.0.0.zip` |
+| `build-info` | `node:22` | Writes `target/build-info.json` (commit, branch, build ID, trigger, environment, time) |
+| `store-bundle` | `cloud-sdk:slim` | Copies the zip, build-info and lint report to `gs://project-953dc129-1db1-4aea-ae3-apigee-bundles/helloworld/<commit>/` (replaces GitHub artifacts) |
+| `get-token` | `cloud-sdk:slim` | Gets a short-lived access token of the build's service account (no keys, no WIF needed) into a workspace file; never printed |
+| `deploy` | `maven` | Reads and deletes the token file, then `mvn -P nonprod apigee-enterprise:deploy` deploys the zip as a new revision (no rebuild) |
+| `api-tests` | `node:22` | Newman against `_APIGEE_BASE_URL` with the API key from **Secret Manager** (`secretEnv`). Saves the exit code instead of failing, so the report is still stored |
+| `store-report` | `cloud-sdk:slim` | Copies `reports/newman-eval.xml` to the same bucket folder, then exits with Newman's exit code — **quality gate**: failing tests fail the build |
+
+Other parts of the file:
+
+| Part | What it does |
+|------|--------------|
+| `availableSecrets.secretManager` | Reads `apigee-helloworld-apikey` (latest version) and gives it only to steps that list it in `secretEnv`. |
+| `substitutions` | Settings with defaults: `_APIGEE_ORG`, `_APIGEE_ENV`, `_APIGEE_BASE_URL`, `_BUNDLE_BUCKET`, `_APIKEY_SECRET`. A trigger can override them (replaces GitHub variables). User-defined names must start with `_`. |
+| `$COMMIT_SHA`, `$BRANCH_NAME`, `$BUILD_ID`, `$TRIGGER_NAME` | Built-in substitutions filled by Cloud Build. |
+| `$$VAR` | A shell variable. `$$` is needed so Cloud Build does not treat it as a substitution. |
+| `options.logging: CLOUD_LOGGING_ONLY` | Required when a build runs as a user-managed service account (logs go to Cloud Logging). |
+
+**Step 6 — Create the triggers** (created by Claude; UI steps for reference)
+
+A trigger starts a build when something happens in the repo.
+
+1. ☰ → **Cloud Build → Triggers** → region **us-west1** at the top → **+ Create trigger**.
+2. Trigger **`helloworld-pr`**:
+   | Field | Value |
+   |-------|-------|
+   | Name | `helloworld-pr` |
+   | Region | `us-west1` |
+   | Description | PR to main: install, lint, package (no deploy) |
+   | Event | **Pull request** |
+   | Repository generation | **2nd gen** → repository `youssefessam2000-apigeeLocalDev` |
+   | Base branch | `^main$` |
+   | Comment control | **Not required** (private repo, only Youssef pushes) |
+   | Included and ignored files filters → Ignored files | `**/*.md`, `**/*.csv`, `*.md`, `*.csv` (docs-only changes do not build — same as `paths-ignore` before) |
+   | Configuration | **Cloud Build configuration file (yaml or json)**, location **Repository**, file `cloudbuild.yaml` |
+   | Service account | `cloudbuild-apigee-deployer@...` |
+   → **Create**.
+3. Trigger **`helloworld-deploy`** — same as above except:
+   | Field | Value |
+   |-------|-------|
+   | Name | `helloworld-deploy` |
+   | Description | Push to main: lint, package, store bundle, deploy to eval, API tests |
+   | Event | **Push to a branch**, branch `^main$` |
+   | Configuration file | `cloudbuild-deploy.yaml` |
+   | Substitution variables (Advanced) | `_APIGEE_ENV` = `eval`, `_APIGEE_BASE_URL` = `https://8.228.239.128.nip.io` |
+4. Check: the **Triggers** page lists both, enabled.
+
+`^main$` is a regular expression: exactly the branch `main`.
+
+**Step 7 — Switch GitHub Actions to manual-only** (Claude)
+
+In `.github/workflows/ci.yml`, the `pull_request` and `push` triggers were removed; only `workflow_dispatch` remains. Pushes and PRs now run only Cloud Build (no double deploy). The workflow can still be run by hand: GitHub → **Actions → CI → Run workflow**. The automatic version is kept as tag `github-actions-final`.
+
+Steps 5 and 7 were pushed on branch `cloud-build-pipeline` (commit `1d9ba7a`), not directly to `main`, so the change can be tested through a pull request in step 8.
 
 **Migration plan:**
 
