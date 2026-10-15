@@ -46,5 +46,14 @@ if (process.env.APIGEE_BASE_URL) {
 }
 args.push(...process.argv.slice(3));
 
-const result = spawnSync(process.execPath, args, { cwd: root, stdio: 'inherit' });
+// Newman prints request URLs, which contain ?apikey=<key>. Cloud Build does not
+// mask secrets in logs, so the key is replaced before the output is printed.
+const result = spawnSync(process.execPath, args, {
+  cwd: root,
+  stdio: ['inherit', 'pipe', 'pipe'],
+  maxBuffer: 64 * 1024 * 1024,
+});
+const mask = (buf) => (buf ? buf.toString().split(apiKey).join('***') : '');
+process.stdout.write(mask(result.stdout));
+process.stderr.write(mask(result.stderr));
 process.exit(result.status === null ? 1 : result.status);
