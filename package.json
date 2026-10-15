@@ -23,6 +23,7 @@
   "homepage": "https://github.com/youssefessam2000/apigeeLocalDev#readme",
   "devDependencies": {
     "apigeelint": "2.85.1",
-    "newman": "6.2.3"
+    "newman": "6.2.3",
+    "newman-reporter-htmlextra": "1.23.1"
   }
 }

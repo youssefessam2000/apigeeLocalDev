@@ -3,7 +3,8 @@
 # Trigger: helloworld-deploy (push to main; .md/.csv-only changes are ignored)
 #   install -> lint -> package -> store bundle in Cloud Storage
 #   -> deploy the stored bundle with the Apigee Maven plugin
-#   -> API tests (Newman) against the deployed proxy -> store test report
+#   -> API tests (Newman) against the deployed proxy -> store test reports
+#      (JUnit XML + readable HTML) next to the bundle
 #
 # Runs as cloudbuild-apigee-deployer. The access token comes from the build's
 # own identity (no keys); the API key comes from Secret Manager. Neither is
@@ -108,7 +109,8 @@ steps:
     args:
       - '-c'
       - |
-        gcloud storage cp reports/newman-${_APIGEE_ENV}.xml gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/
+        gcloud storage cp reports/newman-${_APIGEE_ENV}.xml reports/newman-${_APIGEE_ENV}.html gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/
+        echo "Test report (HTML): https://storage.cloud.google.com/${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/newman-${_APIGEE_ENV}.html"
         code="$$(cat reports/newman-exit-code)"
         echo "Newman exit code: $$code"
         exit "$$code"
