@@ -701,6 +701,16 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 ---
 
+### 8.15 Secret writes blocked for Claude; PowerShell one-liner failed
+
+**Issue:** Creating the Secret Manager secret from Claude Code was blocked by the Claude Code safety check (secret-store writes), like role grants (8.14). The PowerShell one-liner given to Youssef to read the key from Apigee and create the secret returned an error in the VS Code terminal.
+
+**Solution:** Youssef created the secret in the Cloud console. Claude verified it by comparing SHA-256 fingerprints of the secret and the Apigee key (no key printed). When a key is piped in PowerShell, a trailing new line can be added; writing it with `[IO.File]::WriteAllText` or pasting it in the console avoids that.
+
+**Lesson:** Secrets and IAM changes are done by Youssef (console or a single-line command); Claude prepares and verifies them.
+
+---
+
 ## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
@@ -1116,7 +1126,9 @@ Export options:
 |------|------|--------|
 | 0. Tag the GitHub Actions state | 2026-10-15 | Annotated tag `github-actions-final` on `456c36a`, pushed. See below. |
 | 1. Enable APIs | 2026-10-15 | Already enabled: `gcloud services list --enabled` showed `cloudbuild.googleapis.com` and `secretmanager.googleapis.com`. Nothing to do. |
-| 2. Service account + roles | — | Waiting for Youssef (commands in `CHAT_HISTORY.md`, session 3). |
+| 2. Service account + roles | 2026-10-15 | Youssef created `cloudbuild-apigee-deployer` and granted 4 project roles. Verified by Claude. |
+| 3. Secret + bucket | 2026-10-15 | Secret `apigee-helloworld-apikey` (created by Youssef in the console, verified to match the Apigee key); bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (created by Claude); bucket role granted by Youssef. |
+| 4. Connect GitHub to Cloud Build | — | Next (Youssef, browser). |
 
 **Step 0 — tag the GitHub Actions version**
 
@@ -1140,6 +1152,73 @@ git diff github-actions-final main -- .github cloudbuild*.yaml   # compare the p
 ```
 
 On GitHub the tag appears under **Code → Tags** and can be downloaded as a zip.
+
+**Step 2 — Cloud Build service account and roles** (run by Youssef; role grants are blocked for Claude)
+
+```powershell
+gcloud iam service-accounts create cloudbuild-apigee-deployer --display-name="Cloud Build Apigee deployer" --project=project-953dc129-1db1-4aea-ae3
+gcloud projects add-iam-policy-binding project-953dc129-1db1-4aea-ae3 --member="serviceAccount:cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com" --role="roles/apigee.apiAdminV2" --condition=None
+# same command again with: roles/apigee.environmentAdmin, roles/secretmanager.secretAccessor, roles/logging.logWriter
+```
+
+| Part | What it does |
+|------|--------------|
+| `service-accounts create` | Creates the identity Cloud Build runs as. A user-managed account (instead of the default Cloud Build account) has only the roles we give it. |
+| `add-iam-policy-binding ... --member=serviceAccount:... --role=...` | Grants one role on the whole project. `--condition=None` = no IAM condition (avoids an interactive prompt). |
+| `roles/apigee.apiAdminV2` | Import proxies and create revisions (same as the GitHub deployer). |
+| `roles/apigee.environmentAdmin` | Deploy a revision to an environment; without it deploys fail with 403 (issue 8.14). |
+| `roles/secretmanager.secretAccessor` | Read the API key secret during the post-deploy tests. |
+| `roles/logging.logWriter` | Write build logs to Cloud Logging (needed when a build uses a user-managed service account). |
+
+Verify:
+
+```powershell
+gcloud projects get-iam-policy project-953dc129-1db1-4aea-ae3 --flatten="bindings[].members" --filter="bindings.members:cloudbuild-apigee-deployer" --format="value(bindings.role)"
+```
+
+Result: the four roles above.
+
+**Step 3 — API key in Secret Manager, bundle bucket**
+
+*Secret* (Youssef, in the console — Security → Secret Manager → Create secret):
+
+| Field | Value |
+|-------|-------|
+| Name | `apigee-helloworld-apikey` |
+| Value | The **Key** of app `helloworld-app` (Apigee → Distribution → Apps), no spaces or new line |
+| Replication | Automatic |
+| Labels | `app=helloworld`, `env=eval` |
+
+Secret Manager is a Google Cloud service: the secret is stored encrypted in the GCP project, readable only by principals with *Secret Manager Secret Accessor*, every read is audit-logged, and a changed key is added as a new version (the pipeline reads `latest`). It replaces the GitHub secret `APIGEE_APIKEY` once Cloud Build is live. Free tier: 6 active versions and 10,000 reads per month.
+
+Verification (Claude) — compares SHA-256 fingerprints of the secret and the Apigee key, so the key is never printed:
+
+```bash
+gcloud secrets versions access latest --secret apigee-helloworld-apikey | sha256sum     # vs the hash of the approved key from the Apigee API
+```
+
+Result: match, 48 characters, no extra whitespace.
+
+*Bucket* (Claude):
+
+```bash
+gcloud storage buckets create gs://project-953dc129-1db1-4aea-ae3-apigee-bundles --location=us-west1 --uniform-bucket-level-access --public-access-prevention
+```
+
+| Part | What it does |
+|------|--------------|
+| `gs://<project>-apigee-bundles` | Bucket names are global, so the project ID is used as a prefix. The pipeline stores each tested bundle here per commit (replaces GitHub artifacts). |
+| `--location=us-west1` | Same region as the Apigee org (`analyticsRegion`). |
+| `--uniform-bucket-level-access` | Permissions only through IAM (no per-object ACLs). |
+| `--public-access-prevention` | The bucket can never be made public. |
+
+*Bucket permission* (Youssef):
+
+```powershell
+gcloud storage buckets add-iam-policy-binding gs://project-953dc129-1db1-4aea-ae3-apigee-bundles --member="serviceAccount:cloudbuild-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com" --role="roles/storage.objectAdmin"
+```
+
+`roles/storage.objectAdmin` on **this bucket only** lets the build upload and read bundles; it gives no access to other buckets.
 
 **Migration plan:**
 

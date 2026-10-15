@@ -17,7 +17,7 @@ This file is the conversation log and the hand-off for the next session. Start w
 - Day 1 ✅, Day 2 ✅, Day 3 ✅ (all tasks checked against `Apigee_CICD_POC.csv`).
 - The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
-- **Next action:** Cloud Build migration (10.3) — step 1 already done (APIs were enabled); Youssef runs step 2 (service account + roles, commands in session 3), then step 3. Then Day 4 (10.4).
+- **Next action:** Cloud Build migration (10.3) — steps 1–3 done (APIs, service account `cloudbuild-apigee-deployer`, secret `apigee-helloworld-apikey`, bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles`); next is step 4 (connect GitHub to Cloud Build in the browser). Then Day 4 (10.4).
 
 ### To continue in a new Claude Code session
 
@@ -33,7 +33,7 @@ Open Claude Code and say, for example:
 - `.md` and `.csv` files are learning material and must **not** trigger the pipeline (`paths-ignore` in the workflow). Only code changes run CI/CD.
 - Focus is Day 2 onward; Day 1 details are not needed.
 - Never commit API keys or tokens (`git grep` check before committing).
-- Role grants (IAM) are blocked for Claude by the Claude Code safety check: Claude provides a **single-line** command and Youssef runs it in the VS Code terminal (without the `!` prefix).
+- Role grants (IAM) and Secret Manager writes are blocked for Claude by the Claude Code safety check: Claude provides a **single-line** command and Youssef runs it in the VS Code terminal (without the `!` prefix).
 - In Windows PowerShell, use one-line commands; multi-line pastes can merge lines.
 
 ### Environment facts
@@ -121,3 +121,5 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 3. Confirmed everything is pushed to GitHub; only `node_modules/`, `target/`, `reports/` and the API key are local by design.
 4. Added `SETUP.md`: step-by-step install for a new Windows machine (Chocolatey, Git, Node 22, apigeelint, Newman, Temurin 17, Maven, gcloud, VS Code + Cloud Code, Docker, Claude Code; optional apigeecli, gh, Postman), clone, sign-in and verification.
 5. Decided to keep **one repository** for Cloud Build (a second repo would deploy the same proxy to the same `eval` environment and break traceability). Created and pushed the annotated tag `github-actions-final` on `456c36a` to keep the GitHub Actions version (`IMPLEMENTATION.md` 10.3).
+6. Step 2 done: Youssef created `cloudbuild-apigee-deployer` and granted the 4 project roles; Claude verified them.
+7. Step 3: Claude created bucket `project-953dc129-1db1-4aea-ae3-apigee-bundles` (us-west1, private). Secret creation was blocked for Claude and Youssef's PowerShell one-liner errored, so Youssef created `apigee-helloworld-apikey` in the console (issue 8.15); Claude verified it matches the Apigee key by fingerprint. Youssef granted Storage Object Admin on the bucket. Next: step 4.
