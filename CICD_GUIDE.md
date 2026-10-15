@@ -250,6 +250,21 @@ Traceability: commit → Cloud Build build ID (`build-info.json`) → bundle in 
 
 ---
 
+## Part 7b — Promote to staging (Day 4 task 3)
+
+Idea: **build once in eval, then deploy the same revision to staging** — no rebuild.
+
+1. **Staging must work first:**
+   - Apigee env `stagin` attached to the instance and to an environment group with its hostname (Apigee → Management → Environments / Environment groups).
+   - A TLS certificate for the staging hostname on the load balancer: Network services → Load balancing → edit the Apigee LB → Frontend → HTTPS → **Additional certificates → Create Google-managed certificate** for `staging.<ip>.nip.io` → wait until **ACTIVE**.
+   - The API product includes `stagin` (Apigee → Distribution → API products → Edit → Environments).
+2. **Files:** `cloudbuild-promote.yaml` (resolve revision → deploy same revision via Apigee API → Newman → store reports) and `tests/postman/env/stagin.postman_environment.json`.
+3. **Trigger** `helloworld-promote`: Event **Manual invocation**, branch `main`, file `cloudbuild-promote.yaml`, ✅ Require approval, service account `cloudbuild-apigee-deployer`.
+4. Add `cloudbuild-promote.yaml` and the stagin env file to **ignored files** of `helloworld-deploy`, so editing them does not redeploy eval.
+5. **Run:** Triggers → `helloworld-promote` → **Run** (leave `_REVISION` empty = revision in eval) → History → **Approve** → check Apigee: same revision number deployed in `eval` and `stagin`.
+
+Do **not** skip certificate checks (`--insecure`) to make tests pass — fix the certificate instead.
+
 ## Part 8 — Configuration and secret check (Day 4 task 4)
 
 Before calling the pipeline done, check:

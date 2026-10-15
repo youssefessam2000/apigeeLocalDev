@@ -736,6 +736,8 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 ---
 
+<!-- 8.11 follow-up: fix planned in 11.3.5 (second Google-managed certificate on the load balancer). -->
+
 ## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
@@ -1423,7 +1425,7 @@ Day 4 runs on the **Cloud Build** pipeline (10.3). Task list and plan: 10.4. A s
 |---|------|--------|
 | 1 | Add controlled deployment stage | ✅ Done (11.1) |
 | 2 | Run post-deployment tests in pipeline | ✅ Done (11.2) |
-| 3 | Environment promotion design | Pending |
+| 3 | Environment promotion design | 🟡 Design + pipeline done; staging demo waits for the TLS certificate (11.3) |
 | 4 | Configuration and secret review | ✅ Done (11.4) |
 | 5 | Optional performance test | Pending |
 | 6 | Documentation and release notes | Pending |
@@ -1657,5 +1659,96 @@ For production, the manual GCP/Apigee resources would move to **Terraform** (e.g
 
 ---
 
-**Next:** Day 4 task 3 — environment promotion design (11.3).
+### 11.3 Task 3 — Environment promotion design
+
+**CSV:** *Create a simple dev → test/stage → prod promotion plan; for the POC, demonstrate only a safe lower-environment promotion if a second environment exists. Promote the same tested revision/artifact where possible; do not rebuild different source for production. Production approval is out of scope for the demo.* Tools: *Maven promotion capability or apigeecli; environment profiles.* Deliverable: **documented promotion path**.
+
+#### 11.3.1 Promotion path
+
+```
+ developer PC          Apigee eval org (this POC)                         production (future)
+┌──────────────┐     ┌───────────────────────────┐   ┌──────────────────────────┐   ┌────────────────────────┐
+│ dev          │ PR  │ eval  (= test)            │   │ stagin (= stage)         │   │ prod                   │
+│ Apigee       │────►│ build → deploy → tests    │──►│ promote SAME revision    │──►│ promote SAME bundle    │
+│ emulator     │merge│ auto after merge+approval │   │ manual run + approval    │   │ separate org/project,  │
+│ lint + tests │     │ helloworld-deploy         │   │ helloworld-promote       │   │ change approval (CAB)  │
+└──────────────┘     └───────────────────────────┘   └──────────────────────────┘   └────────────────────────┘
+                       builds the bundle ONCE           no rebuild                     no rebuild
+```
+
+| Stage | Environment | How code gets there | Gate | Tests |
+|-------|-------------|---------------------|------|-------|
+| dev | Local Apigee emulator | Developer deploys from VS Code (Cloud Code) | `npm test` (lint + Newman) | Local |
+| test | `eval` | Merge to `main` → `helloworld-deploy` **builds the bundle once**, stores it, deploys → new revision | PR check green + **manual approval** | Newman (8 assertions) |
+| stage | `stagin` | **`helloworld-promote`** (manual run) deploys the **same revision** that is deployed and tested in `eval` | **Manual approval** + revision must be deployed in `eval` | Newman against staging |
+| prod | Separate prod org (future) | Import the **same stored bundle** from the bucket (`helloworld/<commit>/helloworld-1.0.0.zip`) into the prod org, deploy | Change approval (out of scope for the POC) | Smoke tests |
+
+#### 11.3.2 Rules
+
+1. **Build once, promote the same thing.** The bundle is built only by `helloworld-deploy`. Later environments get the same revision (same org) or the same stored zip (other org) — never a rebuild from source.
+2. **Only tested revisions move up.** The promotion pipeline refuses a revision that is not deployed in the lower environment (`_FROM_ENV`).
+3. **Every promotion is approved and tested.** `helloworld-promote` requires approval and runs the same Newman collection against the target environment; failing tests fail the build.
+4. **Environment differences live outside the proxy**: hostnames, keys, products — trigger substitutions, Postman environment files, Secret Manager, API products (task 4).
+5. **Rollback = promote/deploy the previous revision** (it still exists in Apigee and in the bucket).
+
+#### 11.3.3 Why "same revision" works in Apigee X
+
+In Apigee X a **revision belongs to the organization**, not to an environment. `helloworld` revision 11 is one stored bundle; it can be deployed to `eval`, `stagin`, or both. Promoting = "deploy revision N to the next environment" — the bytes are identical to what was tested. (Across orgs, e.g. eval → a production org, revisions are not shared, so the stored zip from the bucket is imported instead.)
+
+Tool choice: the CSV suggests the Maven plugin or apigeecli. The Maven plugin's `deploy` goal **imports** a bundle (creating a new revision), so it fits building, not promoting. apigeecli can deploy an existing revision, but is not installed in the build images. The promotion pipeline calls the **Apigee API** directly with `curl` (`POST .../environments/{env}/apis/{proxy}/revisions/{rev}/deployments`), which is exactly what apigeecli does underneath, with no extra tool.
+
+#### 11.3.4 Implementation (Claude)
+
+**`cloudbuild-promote.yaml`** (new):
+
+| Step | Image | What it does |
+|------|-------|--------------|
+| `resolve-revision` | `cloud-sdk:slim` | Reads which revision is deployed in `_FROM_ENV` (Apigee API). Uses `_REVISION` if given, otherwise the deployed one. **Fails if the revision is not deployed in `_FROM_ENV`.** |
+| `deploy` | `cloud-sdk:slim` | `POST …/environments/_TO_ENV/apis/helloworld/revisions/<rev>/deployments?override=true`, then polls until the state is `READY` (fails on `ERROR` or after 10 min). `override=true` replaces the revision currently in `_TO_ENV`. |
+| `install` | `node:22` | `npm ci` |
+| `api-tests` | `node:22` | `run-cloud.js _TO_ENV` with `_TO_BASE_URL` and the key from Secret Manager; saves the exit code |
+| `store-report` | `cloud-sdk:slim` | Writes `promotion-info.json` (proxy, revision, from, to, commit, build ID, time) and stores it with the XML/HTML reports in `gs://<bucket>/helloworld/promotions/<to_env>/rev-<rev>-<build_id>/`; prints the report link; exits with Newman's code |
+
+Substitutions: `_FROM_ENV` = `eval`, `_TO_ENV` = `stagin`, `_TO_BASE_URL` = `https://staging.8.228.239.128.nip.io`, `_REVISION` = empty (= the revision deployed in eval), plus `_APIGEE_ORG`, `_PROXY`, `_BUNDLE_BUCKET`, `_APIKEY_SECRET`. The same file can promote `stagin → prod-env` later by changing the substitutions.
+
+**`tests/postman/env/stagin.postman_environment.json`** (new): `baseUrl` = `https://staging.8.228.239.128.nip.io`, key placeholder only.
+
+**Trigger `helloworld-promote`** (created by Claude; UI steps for reference): ☰ → **Cloud Build → Triggers** (us-west1) → **+ Create trigger**:
+
+| Field | Value |
+|-------|-------|
+| Name | `helloworld-promote` |
+| Event | **Manual invocation** |
+| Source | 2nd gen repository `youssefessam2000-apigeeLocalDev`, branch `main` |
+| Configuration | Cloud Build configuration file, `cloudbuild-promote.yaml` |
+| Approval | ✅ Require approval before build executes |
+| Service account | `cloudbuild-apigee-deployer@...` |
+
+The service account already has Apigee Environment Admin on the project, which covers `stagin` — no new role needed.
+
+**Trigger `helloworld-deploy` updated:** `cloudbuild-promote.yaml` and `tests/postman/env/stagin.postman_environment.json` were added to its ignored files, so changing the promotion pipeline does not rebuild/redeploy `eval` (verified: push `e14b9a0` started no build). Console: Triggers → `helloworld-deploy` → Show included and ignored files filters → Ignored files. (Via gcloud, `triggers update github` returned `INVALID_ARGUMENT`; `triggers describe --format=yaml` → edit → `triggers import` worked.)
+
+**How to run a promotion (console):** ☰ → **Cloud Build → Triggers** → `helloworld-promote` → **Run** → optionally set `_REVISION` (empty = the revision in eval) → **Run trigger** → History → **Approve** → watch the steps → open the report link in `store-report`.
+
+#### 11.3.5 Staging readiness (2026-10-15)
+
+| Check | Result |
+|-------|--------|
+| `stagin` attached to the Apigee instance `eval-instance` | ✅ |
+| Environment group `staging-group` → hostname `staging.8.228.239.128.nip.io` → `stagin` | ✅ |
+| Request routing (ignoring the certificate) | ✅ reaches Apigee (404 — nothing deployed yet) |
+| **TLS certificate** for `staging.8.228.239.128.nip.io` | ❌ The load balancer `apigee-proxy-https-proxy` has only the Google-managed certificate `apigee-ssl-cert` for `8.228.239.128.nip.io` (issue 8.11) |
+| `helloworld-product` includes `stagin` | ❌ only `eval` → the key would get 401 on staging |
+
+A first version of the pipeline ran the staging tests with Newman `--insecure` (no certificate check). The Claude Code safety check blocked pushing it ("TLS/Auth weaken"), and that was right: tests must not pass while users would get certificate errors. The certificate is fixed instead (next).
+
+**To finish the demo (Youssef, console):**
+
+1. **Staging certificate** — ☰ → **Network services → Load balancing** → the load balancer that uses `apigee-proxy-url-map` → **Edit** → **Frontend configuration** → the HTTPS frontend (IP `8.228.239.128`) → **Additional certificates → Add certificate → Create a new certificate**: name `apigee-ssl-cert-staging`, **Create Google-managed certificate**, domain `staging.8.228.239.128.nip.io` → **Create** → **Done** → **Update**. Keep `apigee-ssl-cert` as the primary certificate. Provisioning takes **15–60 minutes** (status `PROVISIONING` → `ACTIVE`); nip.io already points the name to the load balancer IP, so Google can validate it.
+2. **Product** — ☰ → **Apigee → Distribution → API products → `helloworld-product`** → **Edit** → Environments: add **`stagin`** → **Save**.
+3. When the certificate is `ACTIVE`: run `helloworld-promote` and approve it (see above).
+
+---
+
+**Next:** finish the task 3 demo (11.3.5), then task 6 — documentation and release notes.
 
