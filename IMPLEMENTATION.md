@@ -1108,6 +1108,39 @@ Export options:
 | Logs / audit | GitHub | Cloud Logging + Cloud Audit Logs |
 | Cost | Free minutes | Free tier (120 build-minutes/day), then paid |
 
+**Same repository, not a new one.** Cloud Build is added to this repo next to the GitHub Actions workflow. A second repo would deploy the same `helloworld` proxy to the same `eval` environment, so revisions from two pipelines would mix and could not be traced. The GitHub Actions version is kept with a Git tag, and `ci.yml` will be switched to manual-only (`workflow_dispatch`) instead of being deleted.
+
+**Migration progress:**
+
+| Step | Date | Result |
+|------|------|--------|
+| 0. Tag the GitHub Actions state | 2026-10-15 | Annotated tag `github-actions-final` on `456c36a`, pushed. See below. |
+| 1. Enable APIs | 2026-10-15 | Already enabled: `gcloud services list --enabled` showed `cloudbuild.googleapis.com` and `secretmanager.googleapis.com`. Nothing to do. |
+| 2. Service account + roles | — | Waiting for Youssef (commands in `CHAT_HISTORY.md`, session 3). |
+
+**Step 0 — tag the GitHub Actions version**
+
+```bash
+git tag -a github-actions-final -m "Last state with GitHub Actions as the only pipeline ..."
+git push origin github-actions-final
+```
+
+| Part | What it does |
+|------|--------------|
+| `git tag -a` | Creates an **annotated** tag: a permanent named pointer to a commit, with author, date and a message (a lightweight tag has no message). |
+| `github-actions-final` | Tag name. It points to `456c36a`, the last commit where GitHub Actions is the only pipeline (Day 3 complete; revision 7 was deployed by `28bfdbe`). |
+| `git push origin <tag>` | Tags are not pushed by a normal `git push`; they must be pushed by name (or with `--tags`). |
+
+How to use it later:
+
+```bash
+git show github-actions-final                         # tag message and commit
+git checkout github-actions-final                     # look at that version (detached HEAD; `git checkout main` to return)
+git diff github-actions-final main -- .github cloudbuild*.yaml   # compare the pipelines
+```
+
+On GitHub the tag appears under **Code → Tags** and can be downloaded as a zip.
+
 **Migration plan:**
 
 | # | Step | Who |
