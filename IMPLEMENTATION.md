@@ -1399,7 +1399,7 @@ Push / merge to main ──► helloworld-deploy:  install → lint → package 
 | # | Day 4 task | Deliverable | Status before Day 4 | Remaining work |
 |---|------------|-------------|---------------------|----------------|
 | 1 | Add controlled deployment stage | Non-production deployment stage | ✅ **Done 2026-10-15** (section 11.1) | — |
-| 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | Mostly done: Newman after deploy fails the pipeline | Readable report (HTML) stored with the build |
+| 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | ✅ **Done 2026-10-15** (section 11.2) | — |
 | 3 | Environment promotion design | Documented promotion path | Not started | dev → eval → staging → prod design; promote the same tested revision from `eval` to `stagin` |
 | 4 | Configuration and secret review | Config and secret checklist | Partly known | Checklist of target URL, KVMs/target servers (none), secrets, git history, manual vs as-code resources |
 | 5 | Optional performance test | Baseline results or documented deferral | Not started | Small k6 run on eval, or documented deferral |
@@ -1422,7 +1422,7 @@ Day 4 runs on the **Cloud Build** pipeline (10.3). Task list and plan: 10.4. A s
 | # | Task | Status |
 |---|------|--------|
 | 1 | Add controlled deployment stage | ✅ Done (11.1) |
-| 2 | Run post-deployment tests in pipeline | Pending |
+| 2 | Run post-deployment tests in pipeline | ✅ Done (11.2) |
 | 3 | Environment promotion design | Pending |
 | 4 | Configuration and secret review | Pending |
 | 5 | Optional performance test | Pending |
@@ -1485,5 +1485,60 @@ The approval (who, when, comment) is stored with the build: Cloud Build → Hist
 
 ---
 
-**Next:** Day 4 task 2 — readable post-deploy test report (11.2).
+### 11.2 Task 2 — Post-deployment tests in the pipeline (readable report)
+
+**CSV:** *Add a Newman step after deployment, pointing to the deployed non-production URL. The pipeline must fail if post-deploy assertions fail; produce a readable report as an artifact.*
+
+| Requirement | How it is met |
+|-------------|---------------|
+| Newman step after deployment | Step `api-tests` runs right after `deploy` in `cloudbuild-deploy.yaml` |
+| Points to the deployed non-production URL | `APIGEE_BASE_URL` = trigger substitution `_APIGEE_BASE_URL` (`https://8.228.239.128.nip.io`, the `eval` hostname) |
+| Pipeline fails if assertions fail | `api-tests` saves Newman's exit code; `store-report` stores the reports first and then exits with that code, so failing tests make the build **FAILURE** — and the report is still stored |
+| **Readable report as an artifact** | **New:** HTML report `newman-eval.html` stored next to the bundle in Cloud Storage; the build log prints its link |
+
+**What was changed (Claude):**
+
+| File | Change |
+|------|--------|
+| `package.json` / `package-lock.json` | New dev dependency **`newman-reporter-htmlextra` 1.23.1** (pinned with `npm install -D -E`). A Newman *reporter* is a plugin that writes results in a format; htmlextra writes a single HTML page. |
+| `tests/postman/run-cloud.js` | Reporters `cli,junit,htmlextra`; writes `reports/newman-<env>.xml` (JUnit, for tools) **and** `reports/newman-<env>.html` (for people), with a report title. After Newman finishes, the API key is replaced with `***` in **both report files** (they contain request URLs, like the console output — issue 8.17). |
+| `cloudbuild-deploy.yaml` → `store-report` | Copies the XML **and** HTML report to `gs://<bucket>/helloworld/<commit>/` and prints `Test report (HTML): https://storage.cloud.google.com/...` |
+
+Newman options used:
+
+| Option | What it does |
+|--------|--------------|
+| `-r cli,junit,htmlextra` | Three reporters: console output, JUnit XML, HTML |
+| `--reporter-junit-export <file>` | Where the XML goes |
+| `--reporter-htmlextra-export <file>` | Where the HTML goes |
+| `--reporter-htmlextra-title` / `-browserTitle` | Heading and browser tab title of the report |
+
+Local check before pushing: `npm run test:api:eval` → 8/8 passed; `reports/newman-eval.html` created (80 KB); key found 0 times in the console output, the XML and the HTML (the HTML shows `apikey&#x3D;***`, the HTML-encoded form of `apikey=***`).
+
+**What the report shows:** a summary dashboard (iterations, requests, assertions, failed tests, average response time), then each request — method, URL (key masked), status, response time, response headers and body — and each assertion as pass/fail. A failed assertion is shown in red with its error message.
+
+**How to open it (console):**
+
+- Cloud Build → History → the build → step **`store-report`** → click the `Test report (HTML)` link in the log (opens in the browser while you are signed in to Google), **or**
+- ☰ → **Cloud Storage → Buckets → `project-953dc129-1db1-4aea-ae3-apigee-bundles` → `helloworld/<commit>/`** → **`newman-eval.html`** → **Authenticated URL**.
+
+The bucket is private: only signed-in users with access to the project can open the report.
+
+**Test (2026-10-15):**
+
+| Item | Value |
+|------|-------|
+| Commit | `c0849d8` (pushed to `main`) |
+| Build | `d9297e20` — waited for approval; approved by `youssef.essam1955@gmail.com` at 11:08:53 UTC |
+| Ran | 11:08:54 → 11:12:41 UTC, all 10 steps ✅ |
+| Deployed | **Revision 11** on `eval` |
+| Tests | 8 assertions, 0 failed |
+| Stored in `helloworld/c0849d8…/` | `helloworld-1.0.0.zip`, `build-info.json`, `apigeelint-baseline.json`, `newman-eval.xml`, **`newman-eval.html`** (80 KB, content type `text/html`) |
+| Key | Not in the build log; not in the HTML report (URL shows `apikey=***`) |
+
+**Not demonstrated yet on Cloud Build:** a run where a post-deploy assertion fails (Day 3 showed it locally and on GitHub Actions, 9.4/9.9). It is part of the final clean run evidence (task 7).
+
+---
+
+**Next:** Day 4 task 4 — configuration and secret review (then task 3).
 

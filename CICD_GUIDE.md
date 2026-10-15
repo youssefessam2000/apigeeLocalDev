@@ -128,6 +128,8 @@ The API needs an API key, so the pipeline's tests need an app with a key.
 
 Copy them from this repo or write them yourself. Key ideas:
 
+**Readable test report (Day 4 task 2):** install the HTML reporter once — `npm install -D -E newman-reporter-htmlextra@1.23.1` — and run Newman with `-r cli,junit,htmlextra --reporter-htmlextra-export reports/newman-eval.html` (already in `run-cloud.js`).
+
 **`cloudbuild.yaml`** — pull request checks
 
 ```yaml
@@ -164,8 +166,8 @@ options:
 | 6 | `store-bundle` | `gcloud storage cp` zip + info + lint report → `gs://<bucket>/helloworld/$COMMIT_SHA/` |
 | 7 | `get-token` | `gcloud auth print-access-token > /workspace/.apigee-token` |
 | 8 | `deploy` | reads + deletes the token file, `mvn -P nonprod apigee-enterprise:deploy` |
-| 9 | `api-tests` | `node tests/postman/run-cloud.js eval` with `secretEnv: ['APIGEE_APIKEY']`; saves exit code |
-| 10 | `store-report` | copies `newman-eval.xml` to the bucket, exits with the test exit code (quality gate) |
+| 9 | `api-tests` | `node tests/postman/run-cloud.js eval` with `secretEnv: ['APIGEE_APIKEY']`; writes XML + HTML reports; saves exit code |
+| 10 | `store-report` | copies `newman-eval.xml` + `newman-eval.html` to the bucket, prints the report link, exits with the test exit code (quality gate) |
 
 Plus:
 
@@ -185,7 +187,7 @@ options:
 | `options.logging: CLOUD_LOGGING_ONLY` | Required when the build runs as your own service account |
 | Shell variables as `$$VAR`, `$$(command)` | A single `$` is read by Cloud Build as a substitution |
 | Every substitution you set on a trigger must be used in the YAML | Default `MUST_MATCH` mode fails the build otherwise |
-| Mask the key in Newman output | Cloud Build does **not** hide secrets in logs; Newman prints `?apikey=<key>` URLs (issue 8.17). `run-cloud.js` replaces it with `***` |
+| Mask the key in Newman output **and report files** | Cloud Build does **not** hide secrets in logs; Newman prints `?apikey=<key>` URLs (issue 8.17) and the reports contain them too. `run-cloud.js` replaces the key with `***` everywhere |
 | Do not run `mvn clean` in steps that need the zip | It deletes `target/` |
 
 Commit and push the files to a **branch** (not `main` yet) — Part 6 tests them through a PR.
@@ -240,7 +242,8 @@ Now every merge waits as **Awaiting approval** until approved. Approvers need pr
 |------|----------------------|----------|
 | Build steps and logs | Cloud Build → History → build → click a step | All green; `api-tests` shows 8 assertions, 0 failed; URL shows `apikey=***` |
 | New revision | Apigee → Proxy development → API proxies → `helloworld` → Deployments | New revision deployed on `eval` |
-| Stored files | Cloud Storage → bucket → `helloworld/<commit>/` | `helloworld-1.0.0.zip`, `build-info.json`, `apigeelint-baseline.json`, `newman-eval.xml` |
+| Stored files | Cloud Storage → bucket → `helloworld/<commit>/` | `helloworld-1.0.0.zip`, `build-info.json`, `apigeelint-baseline.json`, `newman-eval.xml`, `newman-eval.html` |
+| Readable test report | `store-report` step log → `Test report (HTML)` link, or bucket → `newman-eval.html` → **Authenticated URL** | Dashboard: 3 requests, 8 assertions, 0 failed; URL shows `apikey=***` |
 | API works | Browser / curl: `https://<hostname>/helloworld?apikey=<key>` | 200 JSON |
 
 Traceability: commit → Cloud Build build ID (`build-info.json`) → bundle in the bucket → Apigee revision (deploy step log) → test report.
@@ -269,4 +272,4 @@ Traceability: commit → Cloud Build build ID (`build-info.json`) → bundle in 
 - [ ] Part 4 — `cloudbuild.yaml`, `cloudbuild-deploy.yaml` on a branch
 - [ ] Part 5 — two triggers + approval on `helloworld-deploy`
 - [ ] Part 6 — green PR, merge, approve, green deploy, red PR demo
-- [ ] Part 7 — revision, bucket files, logs without the key
+- [ ] Part 7 — revision, bucket files, HTML report opens, logs and report without the key
