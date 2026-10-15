@@ -138,7 +138,7 @@ node tests/postman/run-cloud.js stagin                         # same against st
 19. Discussed developing in the Apigee console (Git stays the source of truth, 10.2) and Cloud Build vs GitHub Actions; **decided to move to Cloud Build** because the client uses GCP (10.3).
 20. Updated `IMPLEMENTATION.md` (section 10) and rewrote this file as a hand-off.
 
-### Session 3 — 2026-10-15 (Cloud Build migration start, machine setup)
+### Session 3 — 2026-10-15 (Cloud Build migration, Day 4 tasks 1–4, key rotation)
 
 1. Checked Cloud Build migration step 1: `cloudbuild.googleapis.com` and `secretmanager.googleapis.com` were already enabled — nothing to do.
 2. Gave Youssef the step 2 commands (create `cloudbuild-apigee-deployer`, grant Apigee API Admin, Apigee Environment Admin, Secret Manager Secret Accessor, Logs Writer). Waiting for Youssef to run them; bucket write is granted after the bucket is created in step 3.
