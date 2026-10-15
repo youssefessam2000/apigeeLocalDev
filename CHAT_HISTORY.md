@@ -2,8 +2,8 @@
 
 **Project:** myapigeeworkspace — Apigee X CI/CD POC
 **Repository:** https://github.com/youssefessam2000/apigeeLocalDev (private, branch `main` only)
-**Sessions:** 2026-10-13 → 2026-10-14
-**Detailed record:** `IMPLEMENTATION.md` (commands, explanations, issues 8.1–8.14, design notes in section 10)
+**Sessions:** 2026-10-13 → 2026-10-15
+**Detailed record:** `IMPLEMENTATION.md` (commands, explanations, issues 8.1–8.17, design notes 10, Day 4 in 11)
 **New machine setup:** `SETUP.md` (install tools, clone, sign in, verify)
 **Rebuild the pipeline yourself:** `CICD_GUIDE.md` (Cloud Build, console steps, practice checklist)
 
@@ -13,47 +13,62 @@ This file is the conversation log and the hand-off for the next session. Start w
 
 ## Resume here
 
-### Where we stopped
+### Where we stopped (2026-10-15)
 
-- Day 1 ✅, Day 2 ✅, Day 3 ✅ (all tasks checked against `Apigee_CICD_POC.csv`).
-- The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
-- **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
-- **Cloud Build migration complete (2026-10-15).** Pipeline = Cloud Build triggers `helloworld-pr` / `helloworld-deploy` (us-west1); GitHub Actions is manual-only (tag `github-actions-final`). Latest deploy: **revision 9** (`fbea836`).
-- **Day 4:** tasks 1, 2, 3, 4 ✅ (approval, HTML report, promotion eval → stagin, config & secret checklist). **Revision 11** deployed on **eval and stagin**. Issue 8.11 (staging certificate) resolved.
-- **Key rotated 2026-10-15** (secret version 2; old key revoked).
-- **Next action:** Day 4 task 6 (documentation & release notes), then 5, 7, 8 — see `IMPLEMENTATION.md` 11. Optional: disable secret version 1.
+- Day 1 ✅, Day 2 ✅, Day 3 ✅ (on GitHub Actions; kept as tag `github-actions-final`).
+- **Cloud Build migration ✅.** The pipeline now runs on Cloud Build (us-west1); GitHub Actions is manual-only.
+- **Day 4: 4 of 8 tasks done** — 1 approval ✅, 2 HTML report ✅, 3 promotion eval → stagin ✅, 4 config & secret checklist ✅.
+- **Revision 11** is deployed on **eval and stagin** (same revision, promoted without rebuild).
+- Security follow-ups closed: API key **rotated** (secret version 2, old key revoked), staging TLS certificate **fixed** (8.11).
+- **Next action:** Day 4 **task 6** (OpenAPI file, pipeline diagram, release notes for revision 11) → **task 5** (performance test) → **task 7** (final clean run + evidence pack) → **task 8** (demo + retrospective).
+
+### Open decisions (ask Youssef before starting)
+
+| Topic | Options discussed | Claude's recommendation |
+|-------|-------------------|-------------------------|
+| Task 5 tool | **k6** (small JS file, `grafana/k6` image) or **JMeter** (GUI/XML, common in QA teams) | k6, unless the client's QA team uses JMeter |
+| Task 5 scope | Baseline ~1 req/s for 1 min (under the 100/min quota) + optional burst to prove the quota returns **429**; thresholds e.g. p95 < 1 s, errors < 1% | Both, small, manual run on eval |
+| Order | task 6 then 5, or 5 first | 6 → 5 → 7 → 8 |
+| Console-first pipeline (extra) | New trigger `helloworld-from-apigee`: export a revision saved in the Apigee console → lint → store zip in **Artifact Registry** → commit bundle to Git → deploy eval → test → promote | Optional extra after task 6; needs Artifact Registry Writer role (Youssef) |
+| "Work cloud-only" section in docs | Add Cloud Shell Editor / console-edit-then-export steps to `IMPLEMENTATION.md` + `CICD_GUIDE.md` | Yes, short section |
+| Disable secret version 1 | Secret Manager → `apigee-helloworld-apikey` → version 1 → Disable | Optional clean-up (Youssef) |
 
 ### To continue in a new Claude Code session
 
 On a new PC or laptop, first follow `SETUP.md`.
 
-Open Claude Code and say, for example:
+Open Claude Code in the project folder and say, for example:
 
-> Read CHAT_HISTORY.md and IMPLEMENTATION.md in `D:\vs code\Projects\apigeeee local\myapigeeworkspace`, then continue with the Cloud Build migration (IMPLEMENTATION.md section 10.3, step 1).
+> Read CHAT_HISTORY.md (Resume here) and IMPLEMENTATION.md section 11, then continue with Day 4 task 6.
 
 ### Working agreements (how we work)
 
-- After every step: document it in `IMPLEMENTATION.md` (commands, what each part does, results, issues) and push to `main` directly. One branch only (`main`); short-lived demo branches are deleted afterwards.
-- `.md` and `.csv` files are learning material and must **not** trigger the pipeline (`paths-ignore` in the workflow). Only code changes run CI/CD.
-- Focus is Day 2 onward; Day 1 details are not needed.
-- GCP setup steps are documented as **Cloud Console (UI) steps** (menu path, fields, values), not gcloud commands. Claude may still verify from the terminal.
-- Never commit API keys or tokens (`git grep` check before committing).
-- Role grants (IAM) and Secret Manager writes are blocked for Claude by the Claude Code safety check: Claude provides a **single-line** command and Youssef runs it in the VS Code terminal (without the `!` prefix).
+- After every step: document it in `IMPLEMENTATION.md` (what was done, what each part does, results, issues), keep **`CICD_GUIDE.md`** (do-it-yourself guide) up to date, log it here, and push to `main` directly. One branch only (`main`); short-lived demo branches are deleted afterwards.
+- `.md` and `.csv` files are learning material and must **not** trigger a pipeline (ignored files on the Cloud Build triggers). Only code changes run CI/CD.
+- GCP setup steps are documented as **Cloud Console (UI) steps** (menu path, fields, values), not gcloud commands. Claude may still verify from the terminal ("Checked by Claude").
+- Never commit or print API keys or tokens. Claude verifies secrets by comparing hashes.
+- **IAM role grants, Secret Manager writes and anything that weakens TLS** (e.g. Newman `--insecure`) are blocked for Claude by the Claude Code safety check. Youssef does IAM/secrets in the console; certificate problems are fixed, not skipped.
+- Every deploy waits for **Youssef's approval** in Cloud Build → History.
 - In Windows PowerShell, use one-line commands; multi-line pastes can merge lines.
+- Youssef plans to rebuild the pipeline alone for practice — explain the why, not only the how.
 
 ### Environment facts
 
 | Item | Value |
 |------|-------|
 | GCP project / Apigee org | `project-953dc129-1db1-4aea-ae3` (project number `445485313308`), Apigee X **evaluation**, expires **2026-12-10** |
-| Google account | `youssef.essam1955@gmail.com` (gcloud and Cloud Code must both use it, see issue 8.10) |
-| Environments | `eval` (used by the pipeline), `stagin` (typo, cannot be renamed) |
-| Hostnames | eval: `https://8.228.239.128.nip.io` · staging: `https://staging.8.228.239.128.nip.io` (**TLS certificate does not cover it**, issue 8.11) |
-| Proxy | `helloworld`, base path `/helloworld`; other proxies on eval: `hello-world`, `oauth-v1` |
-| Test data in Apigee | product `helloworld-product` (eval, 100/min), developer `ahamilton@example.com`, app `helloworld-app` (holds the API key: console → Distribution → Apps) |
-| CI deploy identity | `github-apigee-deployer@project-953dc129-1db1-4aea-ae3.iam.gserviceaccount.com` — roles Apigee API Admin + Apigee Environment Admin |
-| Workload Identity | pool `github-pool`, provider `github-provider` (only repo `youssefessam2000/apigeeLocalDev`) |
-| GitHub settings | variables `GCP_WIF_PROVIDER`, `GCP_SERVICE_ACCOUNT`, `APIGEE_ORG`, `APIGEE_ENV`, `APIGEE_BASE_URL`; secret `APIGEE_APIKEY` |
+| Google account | `youssef.essam1955@gmail.com` (gcloud and Cloud Code must both use it, issue 8.10) |
+| Region | `us-west1` (Apigee instance `eval-instance`, Cloud Build, bucket) |
+| Environments | `eval` (test), `stagin` (stage; typo, cannot be renamed) — both attached to `eval-instance` |
+| Hostnames | eval `https://8.228.239.128.nip.io` (cert `apigee-ssl-cert`) · staging `https://staging.8.228.239.128.nip.io` (cert `apigee-ssl-cert-staging`) — both Google-managed, ACTIVE, on load balancer `apigee-proxy-https-proxy` |
+| Proxy | `helloworld`, base path `/helloworld`, key in `?apikey=`; other proxies: `hello-world`, `oauth-v1` |
+| Test data in Apigee | product `helloworld-product` (environments `eval`, `stagin`; 100/min), developer `ahamilton@example.com`, app `helloworld-app` (current key approved, old key revoked) |
+| Pipeline identity | `cloudbuild-apigee-deployer@…` — Apigee API Admin, Apigee Environment Admin, Secret Manager Secret Accessor, Logs Writer, Storage Object Admin on the bundle bucket |
+| Secret | `apigee-helloworld-apikey` (version 2 = current key; version 1 = revoked key) |
+| Bundle bucket | `gs://project-953dc129-1db1-4aea-ae3-apigee-bundles/helloworld/<commit>/` (zip, build-info, lint report, Newman XML + HTML); promotions under `helloworld/promotions/<env>/rev-<rev>-<build>/` |
+| GitHub connection | Cloud Build 2nd gen `github-conn` (us-west1) → repo `youssefessam2000-apigeeLocalDev` |
+| Triggers | `helloworld-pr` (PR → lint, package) · `helloworld-deploy` (push to main → approval → build, store, deploy eval, test) · `helloworld-promote` (manual → approval → same revision to stagin, test) |
+| Old GitHub Actions resources | `github-apigee-deployer`, WIF pool `github-pool`, GitHub secret `APIGEE_APIKEY` — unused; remove when GitHub Actions is retired |
 | Local tools | Node 22, Temurin JDK 17, Maven 3.9.16 (Chocolatey), gcloud 589 at `C:\Program Files (x86)\Google\Cloud SDK\` |
 | Org policy | service-account key creation is blocked (`iam.disableServiceAccountKeyCreation`) |
 
@@ -62,23 +77,27 @@ Open Claude Code and say, for example:
 ```powershell
 cd "D:\vs code\Projects\apigeeee local\myapigeeworkspace"
 
-npm test                                                     # lint + emulator tests (emulator must run)
-$env:APIGEE_APIKEY = "<helloworld-app key>"; npm run test:api:eval   # API tests against eval
+npm run lint                                                   # apigeelint
+npm test                                                       # lint + emulator tests (emulator must run)
+$env:APIGEE_APIKEY = "<helloworld-app key>"; npm run test:api:eval    # API tests against eval (key masked in output)
+node tests/postman/run-cloud.js stagin                         # same against staging (APIGEE_APIKEY set)
 
-# Manual deploy (same as the pipeline does)
-$env:APIGEE_ORG = "project-953dc129-1db1-4aea-ae3"; $env:APIGEE_ENV = "eval"; $env:APIGEE_TOKEN = (gcloud auth print-access-token)
-mvn install -P nonprod                                       # do NOT run mvn clean (deletes emulator data in target/)
+# Pipeline (normally via Git + console):
+#   deploy to eval:      merge to main  -> Cloud Build -> History -> Approve
+#   promote to staging:  Cloud Build -> Triggers -> helloworld-promote -> Run -> Approve
+# Do NOT run mvn clean (deletes emulator data in target/).
 ```
 
 ### Open items
 
 | Item | Status |
 |------|--------|
-| Cloud Build migration | Next (10.3) |
-| Day 4 tasks | Planned (10.4) |
-| Staging TLS certificate | ✅ Resolved 2026-10-15 (second Google-managed certificate) |
+| Day 4 tasks 6, 5, 7, 8 | Next (`IMPLEMENTATION.md` 10.4 / 11) |
+| Console-first pipeline with Artifact Registry | Proposed (optional extra) |
 | Pipeline supports only `helloworld` | Backlog (multi-proxy: one Maven module per proxy) |
-| GitHub Actions + WIF resources | Will be disabled after Cloud Build works; WIF pool can be deleted later |
+| GitHub Actions + WIF resources, GitHub secret | Remove when GitHub Actions is retired |
+| Review `apigeeowner` (Owner) and `apigee-cicd` (Apigee Admin) | Client decision (11.4.5) |
+| Production backlog | Per-environment keys/products, key in header, debug mask, bucket lifecycle, build notifications, Terraform for manual resources |
 
 ---
 
@@ -141,3 +160,12 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 18. Youssef added the Google-managed certificate `apigee-ssl-cert-staging` (free; ACTIVE in ~6 min) and `stagin` to `helloworld-product`. Claude verified: staging serves its own valid certificate, eval unchanged. Issue 8.11 resolved.
 19. Youssef ran and approved `helloworld-promote` (build `99b55021`): revision 11 promoted eval → stagin, deployment READY, staging tests 8/8 with normal TLS checks, reports + `promotion-info.json` in `helloworld/promotions/stagin/rev-11-…/`. Revision 11 on both environments, no new revision created. Task 3 ✅ (`IMPLEMENTATION.md` 11.3.6).
 20. Youssef rotated the API key (new key in `helloworld-app`, secret version 2, old key revoked). Claude verified by hash: secret latest = new approved key; old key → 401 on eval and staging, new key → 200; Newman 8/8 on both. Issue 8.17 follow-up closed (`IMPLEMENTATION.md` 8.17).
+
+**Q&A at the end of session 3 (no changes made):**
+
+21. *Switch environments by approving/revoking the key?* No. The **trigger** decides where the proxy goes (`helloworld-deploy` → eval, `helloworld-promote` → stagin), approval says yes/no each time. The key only controls who can **call** the API; it works in both environments because `helloworld-product` has both. Revoking it breaks tests in both. Per-environment keys = separate products/apps/secrets (production backlog).
+22. *GCP version control for cloud-only work?* GCP's Git service is **Secure Source Manager** (Cloud Source Repositories is being retired). Not needed to work cloud-only: use **Cloud Shell Editor** (browser VS Code with Git/Node/Java/Maven) or edit in the **Apigee console** and export the revision back to Git (`IMPLEMENTATION.md` 10.2). Apigee revisions are history, not version control. Recommendation: stay on GitHub unless the client requires GCP-only.
+23. *"Registry" = version control?* **Artifact Registry** stores versioned, immutable build outputs (e.g. the proxy zip), not source. Proposed a **console-first pipeline**: export a console revision → lint → Artifact Registry → commit to Git → deploy eval → test → promote. Waiting for Youssef's decision.
+24. *Did we do stress/integration tests (JMeter)?* Integration/functional: **yes** (Newman against the deployed proxy after every deploy/promotion). Stress/performance: **not yet** — Day 4 task 5 (optional). Limits: 100/min quota (→ 429) and the shared mock backend, so only a small baseline makes sense. Proposed k6 (or JMeter if the client uses it). Waiting for Youssef's decision.
+25. Saved this hand-off before closing the session.
+
