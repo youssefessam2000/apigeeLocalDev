@@ -250,6 +250,20 @@ Traceability: commit → Cloud Build build ID (`build-info.json`) → bundle in 
 
 ---
 
+## Part 8 — Configuration and secret check (Day 4 task 4)
+
+Before calling the pipeline done, check:
+
+- [ ] **Git:** no keys/tokens in files or history — `git grep -I -c -F "<key>" $(git rev-list --all)` → no output (do not paste the key into files; use an environment variable).
+- [ ] **Artifacts:** download the bucket folder, unzip the bundle, search for the key → nothing; reports show `apikey=***`.
+- [ ] **Logs:** Cloud Build → History → each build → search the log for `apikey=` → only `***`. (When scripting this, save each log to a file first — fast reads can return empty logs.)
+- [ ] **Secrets only in Secret Manager** (delete old copies, e.g. GitHub secrets).
+- [ ] **No service account keys:** IAM & Admin → Service Accounts → each account → **Keys** tab is empty.
+- [ ] **Least privilege:** IAM & Admin → IAM → each service account has only the roles it needs.
+- [ ] **Apigee config:** Apigee → Management → Environments → `eval` → Target servers, Key value maps, Keystores → note what the proxy uses (here: none).
+- [ ] **Manual vs code list** written down (see `IMPLEMENTATION.md` 11.4.6).
+- [ ] If a key ever appeared in a log: **rotate it**.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix | Issue |

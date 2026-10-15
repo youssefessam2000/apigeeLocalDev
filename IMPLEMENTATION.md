@@ -1401,7 +1401,7 @@ Push / merge to main ──► helloworld-deploy:  install → lint → package 
 | 1 | Add controlled deployment stage | Non-production deployment stage | ✅ **Done 2026-10-15** (section 11.1) | — |
 | 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | ✅ **Done 2026-10-15** (section 11.2) | — |
 | 3 | Environment promotion design | Documented promotion path | Not started | dev → eval → staging → prod design; promote the same tested revision from `eval` to `stagin` |
-| 4 | Configuration and secret review | Config and secret checklist | Partly known | Checklist of target URL, KVMs/target servers (none), secrets, git history, manual vs as-code resources |
+| 4 | Configuration and secret review | Config and secret checklist | ✅ **Done 2026-10-15** (section 11.4) | Follow-ups in 11.4 |
 | 5 | Optional performance test | Baseline results or documented deferral | Not started | Small k6 run on eval, or documented deferral |
 | 6 | Documentation and release notes | Complete project documentation | IMPLEMENTATION.md complete to Day 3 | OpenAPI file, README update, pipeline diagram, release notes |
 | 7 | Final clean run | End-to-end evidence pack | Not started | Change → PR → green → merge → approval → deploy → tests; trace commit ↔ artifact ↔ revision ↔ report |
@@ -1424,7 +1424,7 @@ Day 4 runs on the **Cloud Build** pipeline (10.3). Task list and plan: 10.4. A s
 | 1 | Add controlled deployment stage | ✅ Done (11.1) |
 | 2 | Run post-deployment tests in pipeline | ✅ Done (11.2) |
 | 3 | Environment promotion design | Pending |
-| 4 | Configuration and secret review | Pending |
+| 4 | Configuration and secret review | ✅ Done (11.4) |
 | 5 | Optional performance test | Pending |
 | 6 | Documentation and release notes | Pending |
 | 7 | Final clean run | Pending |
@@ -1540,5 +1540,122 @@ The bucket is private: only signed-in users with access to the project can open 
 
 ---
 
-**Next:** Day 4 task 4 — configuration and secret review (then task 3).
+### 11.4 Task 4 — Configuration and secret review
+
+**CSV:** *Review target server, KVM, environment-specific values, and secrets used by the proxy. Ensure no secrets in Git/history/artifacts; identify which resources are created manually vs automated as code.* Deliverable: **configuration and secret checklist**.
+
+Review done by Claude on 2026-10-15 (read-only: Apigee API, Git, Cloud Storage, Cloud Build logs, IAM). Secret values were never printed — searches compared the real key and reported only counts.
+
+#### 11.4.1 Apigee configuration used by the proxy
+
+| Item | Found | Assessment |
+|------|-------|------------|
+| Target endpoint | `targets/default.xml` → fixed URL `https://mocktarget.apigee.net/xml`, TLS enforced | ✅ OK for the POC (public mock, same in every environment). With a real backend, replace the URL with a **target server** per environment. |
+| Target servers | `eval`: none · `stagin`: none · repo `environments/dev/targetservers.json`: `[]` | ✅ Not used |
+| KVMs (key value maps) | Org: none · `eval`: none · `stagin`: none · proxy: none | ✅ Not used — no secret is stored in Apigee config |
+| Keystores / truststores / references | `eval`, `stagin`: none · repo `keystores.json`: empty | ✅ Not used (TLS to the target uses Google's default trust) |
+| Shared flows / flow hooks | Org has no shared flows, so no flow hook is attached | ✅ Not used |
+| Resource files (JS, XSL, …) | None in the proxy or environments | ✅ Not used (also why JS unit tests are N/A, Day 2) |
+| Debug mask | `eval` debugmask empty | ⚠️ Debug (trace) sessions would show the `apikey` query parameter. Mask it if debugging with real keys (backlog). |
+| API key handling in the proxy | `verify-api-key` reads `request.queryparam.apikey`; `AM-RemoveApiKeyParam` removes it before calling the target | ✅ The key is not forwarded to the backend. ⚠️ Keys in URLs end up in logs (issue 8.17); a header (`x-api-key`) is better for production. |
+| Quota | `Q-ImposeQuota` reads the limits from the API product (`helloworld-product`: 100/min); `count="2000"`/month are fallbacks | ✅ Limits are managed per product, not in code |
+| `environments/dev/*.json` in the repo | All empty except `deployments.json` (`helloworld`) | ℹ️ Emulator-only workspace files, not used by Maven or the pipeline |
+
+#### 11.4.2 Environment-specific values
+
+| Value | `eval` (now) | `stagin` (later) | Where it is set |
+|-------|--------------|------------------|-----------------|
+| Apigee org | `project-953dc129-1db1-4aea-ae3` | same | `_APIGEE_ORG` (YAML default) |
+| Environment | `eval` | `stagin` | `_APIGEE_ENV` (trigger substitution) |
+| Base URL | `https://8.228.239.128.nip.io` | `https://staging.8.228.239.128.nip.io` (TLS cert broken, 8.11) | `_APIGEE_BASE_URL` (trigger) + `tests/postman/env/<env>.postman_environment.json` |
+| API key | Secret `apigee-helloworld-apikey` | A separate secret per environment (recommended) | `_APIKEY_SECRET` (YAML default) |
+| Bundle bucket | `project-953dc129-1db1-4aea-ae3-apigee-bundles` | same bucket, per-commit folders | `_BUNDLE_BUCKET` (YAML default) |
+| Deploy identity | `cloudbuild-apigee-deployer` | same (or one per environment for production) | Trigger → service account |
+| Maven profile | `nonprod` | `nonprod` | `pom.xml` |
+
+Nothing environment-specific is hard-coded in the proxy. Everything that changes per environment is a substitution or an environment file.
+
+#### 11.4.3 Secrets inventory
+
+| Secret | Where it lives | Who can read it | Status |
+|--------|----------------|-----------------|--------|
+| `helloworld-app` API key (eval) | **Secret Manager** `apigee-helloworld-apikey` (1 version) — the source of truth | `cloudbuild-apigee-deployer` + project owners | ✅ |
+| Same API key, old copy | **GitHub** secret `APIGEE_APIKEY` (used by the manual-only GitHub Actions workflow) | GitHub Actions runs of the repo | ⚠️ Duplicate. Delete when GitHub Actions is retired (GitHub → Settings → Secrets and variables → Actions). |
+| Same API key | Apigee app `helloworld-app` | Apigee admins | ✅ (it is the issuer) |
+| Same API key, **leaked** | Cloud Build log of build `a6b473c6` (issue 8.17) and the Claude Code session output | Project members with log access | ❌ **Rotate the key** (open follow-up) |
+| Access tokens (deploy) | Created per build from the service account; workspace file deleted after use | — | ✅ Never stored, never printed |
+| Service account keys (JSON) | **None** — 0 user-managed keys on all 5 service accounts; creation is blocked by org policy `iam.disableServiceAccountKeyCreation` | — | ✅ |
+| GitHub → Cloud Build connection token | Secret Manager, managed by Cloud Build (`github-conn`) | Cloud Build service agent | ✅ Managed by Google |
+| Emulator test keys | Local only (`target/emulator`, git-ignored) | Your PC | ✅ Work only on the local emulator |
+
+#### 11.4.4 Secret scan results
+
+| Where | How it was checked | Result |
+|-------|--------------------|--------|
+| **Git — current files** | `git grep` for password/secret/token/apikey | ✅ Only names and references (e.g. `secretEnv`, `${env.APIGEE_TOKEN}`), no values |
+| **Git — all 42 commits** | `git grep` over every commit for: the real eval key, Google tokens `ya29.`, Google API keys `AIza…`, private key blocks, service-account JSON, GitHub tokens, `apikey=<long value>`, `consumerKey/Secret` values | ✅ Real key: 0 · tokens: 0 · private keys: 0 · ⚠️ 12 old versions of `target/emulator/testdata/…/developerapps_results.json` contain **emulator** keys (tracked before `2b70733`, issue 8.8) — local-only keys, low risk, no history rewrite needed |
+| **Artifacts — bucket** | Downloaded all 17 objects, unzipped every bundle, searched for the key and tokens | ✅ 0 — bundles contain only `apiproxy/` XML; reports show `apikey=***` |
+| **Cloud Build logs** (5 builds) | Saved each log and searched for the key and tokens | ✅ 4 clean · ❌ `a6b473c6` (first deploy) has the key once — before the masking fix |
+| **`.gitignore`** | Reviewed | ✅ Ignores `node_modules/`, `target/`, `reports/`, `.env`, `*.key`, `*.pem`, `*-credentials.json`, `*service-account*.json` |
+
+Tip: when checking Cloud Build logs in a loop, save each log to a file first. Reading many logs quickly can hit the Cloud Logging read quota and return an empty log (2 lines), which looks like a clean result but is not.
+
+#### 11.4.5 Identities (service accounts)
+
+| Service account | Roles | Used by | Assessment |
+|-----------------|-------|---------|------------|
+| `cloudbuild-apigee-deployer` | Apigee API Admin, Apigee Environment Admin, Secret Manager Secret Accessor, Logs Writer (+ Storage Object Admin on the bundle bucket) | Cloud Build pipeline | ✅ Needed. ℹ️ Could be tightened: Secret Accessor on the one secret instead of the project |
+| `github-apigee-deployer` + WIF pool `github-pool` | Apigee API Admin, Apigee Environment Admin | GitHub Actions (manual-only now) | ⚠️ Unused by the pipeline. Disable/delete when GitHub Actions is retired |
+| `apigee-cicd` | Apigee Admin, Logs Writer | Not created or used in this POC | ⚠️ Review: broad Apigee role, purpose unknown |
+| `apigeeowner` | **Owner**, Apigee API Admin | Runtime identity of the old `hello-world` proxy deployment | ⚠️ Review: Owner is far more than a proxy needs |
+| `445485313308-compute` (default) | none | — | ✅ |
+
+#### 11.4.6 Manual vs automated (as code)
+
+| Resource | How it is created | In Git? |
+|----------|-------------------|---------|
+| Proxy `helloworld` (policies, endpoints) | **Code** — `src/main/apigee/...`, deployed by the pipeline | ✅ |
+| Build/package config | **Code** — `pom.xml`, `package.json`, `package-lock.json` | ✅ |
+| Pipeline | **Code** — `cloudbuild.yaml`, `cloudbuild-deploy.yaml` | ✅ |
+| Tests | **Code** — Postman collection, environment files, `run-cloud.js` | ✅ |
+| Cloud Build triggers (incl. approval, substitutions) | **Manual** (console/gcloud) | ❌ Documented in 10.3 / 11.1 |
+| GitHub connection `github-conn` | **Manual** (browser authorization) | ❌ Documented |
+| Service accounts and IAM roles | **Manual** (Youssef) | ❌ Documented |
+| Secret `apigee-helloworld-apikey` | **Manual** (console) | ❌ Value must never be in Git |
+| Bundle bucket | **Manual** (gcloud) | ❌ Documented |
+| API product, developer, app (eval) | **Manual** (console, Day 3) | ❌ Documented in 9.3 |
+| Apigee environments, environment groups, hostnames | **Manual** (Apigee provisioning) | ❌ |
+| Emulator test data | **Code** — `src/tests/mytestbundle/` | ✅ |
+
+For production, the manual GCP/Apigee resources would move to **Terraform** (e.g. `google_cloudbuild_trigger`, `google_service_account`, `google_secret_manager_secret` (without the value), `google_apigee_*`) or to the Apigee Maven config goals (`apigee-config-maven-plugin`) for products/developers/apps. Backlog for task 8.
+
+#### 11.4.7 Checklist
+
+| # | Check | Result |
+|---|-------|--------|
+| 1 | No secrets in the current Git files | ✅ |
+| 2 | No real secrets in Git history | ✅ (emulator-only keys in old commits, accepted) |
+| 3 | No secrets in build artifacts (bundles, reports, build-info) | ✅ |
+| 4 | No secrets in pipeline logs | ❌ one old build (`a6b473c6`) → rotate key |
+| 5 | Secrets stored in a secret manager, not in files or variables | ✅ Secret Manager (⚠️ old GitHub copy to delete) |
+| 6 | No long-lived credentials (service account keys) | ✅ none |
+| 7 | Tokens short-lived and never printed | ✅ |
+| 8 | Environment-specific values outside the proxy code | ✅ substitutions + environment files |
+| 9 | Target servers / KVMs / keystores reviewed | ✅ none used |
+| 10 | Manual vs code resources listed | ✅ 11.4.6 |
+| 11 | Least privilege for identities | ⚠️ pipeline OK; review `apigeeowner` (Owner) and `apigee-cicd` |
+| 12 | Unused credentials removed | ⚠️ `github-apigee-deployer`, WIF pool, GitHub secret — remove when GitHub Actions is retired |
+
+**Follow-ups:**
+
+| Priority | Action | Who |
+|----------|--------|-----|
+| High | Rotate the `helloworld-app` key (new key → new secret version → revoke old key) | Youssef |
+| Medium | Delete GitHub secret `APIGEE_APIKEY`, disable `github-apigee-deployer` and the WIF pool when GitHub Actions is retired | Youssef |
+| Low | Review/remove `apigee-cicd` and reduce `apigeeowner` from Owner | Youssef (client decision) |
+| Backlog | Debug mask for `apikey`; API key in a header; lifecycle rule on the bucket (e.g. delete after 90 days); per-environment secrets; Terraform for manual resources | Task 8 backlog |
+
+---
+
+**Next:** Day 4 task 3 — environment promotion design (11.3).
 
