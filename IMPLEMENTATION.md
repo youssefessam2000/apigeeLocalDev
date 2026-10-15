@@ -36,6 +36,7 @@
 8. [Issues & Solutions](#8-issues--solutions)
 9. [Day 3 — Non-Production Deployment & CI](#9-day-3--non-production-deployment--ci)
 10. [Design Notes & Decisions](#10-design-notes--decisions)
+11. [Day 4 — Controlled Deployment, Promotion & Release](#11-day-4--controlled-deployment-promotion--release)
 
 ---
 
@@ -1397,7 +1398,7 @@ Push / merge to main ──► helloworld-deploy:  install → lint → package 
 
 | # | Day 4 task | Deliverable | Status before Day 4 | Remaining work |
 |---|------------|-------------|---------------------|----------------|
-| 1 | Add controlled deployment stage | Non-production deployment stage | Mostly done: deploys only after CI passes on `main`, keyless login, tokens never printed | Add manual approval (Cloud Build "Require approval") |
+| 1 | Add controlled deployment stage | Non-production deployment stage | ✅ **Done 2026-10-15** (section 11.1) | — |
 | 2 | Run post-deployment tests in pipeline | Automated post-deploy verification | Mostly done: Newman after deploy fails the pipeline | Readable report (HTML) stored with the build |
 | 3 | Environment promotion design | Documented promotion path | Not started | dev → eval → staging → prod design; promote the same tested revision from `eval` to `stagin` |
 | 4 | Configuration and secret review | Config and secret checklist | Partly known | Checklist of target URL, KVMs/target servers (none), secrets, git history, manual vs as-code resources |
@@ -1410,4 +1411,79 @@ Suggested order: Cloud Build migration (10.3) → 4 → 1 → 2 → 3 → 6 → 
 
 ---
 
-**Next:** migrate the pipeline to Cloud Build (10.3), then Day 4 (10.4).
+**Next:** Day 4 (section 11).
+
+---
+
+## 11. Day 4 — Controlled Deployment, Promotion & Release
+
+Day 4 runs on the **Cloud Build** pipeline (10.3). Task list and plan: 10.4. A shorter "do it yourself" version of each step is in `CICD_GUIDE.md`.
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Add controlled deployment stage | ✅ Done (11.1) |
+| 2 | Run post-deployment tests in pipeline | Pending |
+| 3 | Environment promotion design | Pending |
+| 4 | Configuration and secret review | Pending |
+| 5 | Optional performance test | Pending |
+| 6 | Documentation and release notes | Pending |
+| 7 | Final clean run | Pending |
+| 8 | Demo and retrospective | Pending |
+
+### 11.1 Task 1 — Controlled deployment stage (manual approval)
+
+**CSV:** *Configure deployment to a non-production environment only, triggered after CI succeeds and preferably after merge/approval. Store credentials in CI secrets or use workload identity federation where supported; never print tokens in logs.*
+
+| Requirement | How it is met |
+|-------------|---------------|
+| Non-production only | Trigger `helloworld-deploy` deploys only to `eval` (`_APIGEE_ENV=eval`). The service account has no access outside this project. |
+| After CI succeeds | Code reaches `main` only through a PR whose `helloworld-pr` check is green; the deploy build runs lint and package again before deploying. |
+| After merge | `helloworld-deploy` runs only on pushes to `main` (`^main$`). PR builds never deploy and get no secrets. |
+| **After approval** | **New:** the deploy trigger requires manual approval; the build waits until someone approves it. |
+| Credentials | No keys: the build uses the identity of `cloudbuild-apigee-deployer`; the API key is in Secret Manager. |
+| No tokens in logs | The access token goes to a workspace file that the deploy step deletes; the API key is masked as `***` (issue 8.17). |
+
+**What was done (Youssef, console):**
+
+1. ☰ → **Cloud Build → Triggers** → region **us-west1** → click **`helloworld-deploy`**.
+2. Section **Approval** → ✅ **Require approval before build executes** → **Save**.
+3. `helloworld-pr` was **not** changed: PR checks never deploy, so they do not need approval.
+
+Checked by Claude (terminal): `helloworld-deploy` → `approvalConfig.approvalRequired: True`; `helloworld-pr` → no approval.
+
+**How a deploy works now:**
+
+```
+merge to main ─► build created, status "Awaiting approval" (no step runs, nothing deployed)
+                   │
+                   ├─ Approve ─► all 10 steps run ─► new revision on eval + tests
+                   └─ Reject  ─► build ends, nothing deployed
+```
+
+**How to approve (console):** ☰ → **Cloud Build → History** (us-west1) → the build with **Awaiting approval** → **Review** → **Approve** (optional comment) → confirm. **Reject** stops it.
+
+**Who can approve:** anyone with the permission `cloudbuild.builds.approve` — project Owners, or the role **Cloud Build Approver**. In a real team, give that role to a release manager and not to developers, so nobody approves their own change.
+
+**Test (2026-10-15):**
+
+| Item | Value |
+|------|-------|
+| Change | Comment in `Q-ImposeQuota.xml` (where the quota limits come from) — commit `1d1ec4a`, pushed to `main` |
+| Build | `07c46853` (`helloworld-deploy`) |
+| Created | 10:52:15 UTC — status **PENDING / Awaiting approval**, no steps ran |
+| Approved | 10:54:19 UTC by `youssef.essam1955@gmail.com`, comment "Approved: quota comment, deploy to eval" |
+| Ran | 10:54:20 → 10:57:38 UTC (3 min 18 s), all 10 steps ✅ |
+| Result | **Revision 10** deployed on `eval`; Newman 8 assertions, 0 failed; key not in the log; bundle + reports in `gs://…-apigee-bundles/helloworld/1d1ec4af…/` |
+
+The approval (who, when, comment) is stored with the build: Cloud Build → History → build → **Approval** details, and in Cloud Audit Logs.
+
+**Notes / limits:**
+
+- Approval gates the **whole** build (it waits before the first step), not only the deploy step. Lint and packaging already passed in the PR, so this is fine for the POC.
+- Cloud Build does not notify anyone that a build is waiting. For a team, add notifications (Pub/Sub topic `cloud-builds` → email/Slack/Chat). Production backlog.
+- If several merges are waiting, each build is approved separately; reject old ones to deploy only the latest.
+
+---
+
+**Next:** Day 4 task 2 — readable post-deploy test report (11.2).
+

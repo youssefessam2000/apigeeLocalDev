@@ -7,7 +7,7 @@ It is the short "how to" version; `IMPLEMENTATION.md` has the full history, expl
 
 ```
 Pull request to main ──► trigger helloworld-pr:      install → lint → package             (no deploy, no secrets)
-Push / merge to main ──► trigger helloworld-deploy:  install → lint → package → store bundle (Cloud Storage)
+Push / merge to main ──► trigger helloworld-deploy:  [manual approval] → install → lint → package → store bundle (Cloud Storage)
                                                      → deploy to Apigee eval (Maven plugin)
                                                      → API tests (Newman, key from Secret Manager) → store report
 .md / .csv only      ──► nothing runs
@@ -216,14 +216,23 @@ If GitHub Actions is still active, change `.github/workflows/ci.yml` to `on: wor
 
 ✅ Check: both triggers listed and enabled.
 
+**5.3 Manual approval before deploy** (Day 4 task 1)
+
+1. **Cloud Build → Triggers** → click **`helloworld-deploy`**.
+2. **Approval** → ✅ **Require approval before build executes** → **Save**.
+3. Leave `helloworld-pr` without approval (it never deploys).
+
+Now every merge waits as **Awaiting approval** until approved. Approvers need project Owner or the **Cloud Build Approver** role.
+
 ---
 
 ## Part 6 — Test it
 
 1. GitHub → **New pull request** from your branch to `main`.
 2. The PR shows a **Cloud Build** check → ☰ → **Cloud Build → History** (us-west1) → `helloworld-pr` → green.
-3. **Merge** the PR → `helloworld-deploy` starts → all 10 steps green (~3–4 min).
-4. **Red test:** make a PR that breaks lint (e.g. remove `<DisplayName>` from a policy or change a test's expected status) → the PR check is red → close it without merging.
+3. **Merge** the PR → `helloworld-deploy` starts and waits with **Awaiting approval**.
+4. **Approve:** Cloud Build → History → the waiting build → **Review** → **Approve** → all 10 steps green (~3–4 min). (Try **Reject** once too: nothing is deployed.)
+5. **Red test:** make a PR that breaks lint (e.g. remove `<DisplayName>` from a policy or change a test's expected status) → the PR check is red → close it without merging.
 
 ## Part 7 — Verify the result
 
@@ -258,6 +267,6 @@ Traceability: commit → Cloud Build build ID (`build-info.json`) → bundle in 
 - [ ] Part 2 — APIs, service account + 4 roles, secret, bucket, bucket permission
 - [ ] Part 3 — GitHub connection + linked repo
 - [ ] Part 4 — `cloudbuild.yaml`, `cloudbuild-deploy.yaml` on a branch
-- [ ] Part 5 — two triggers
-- [ ] Part 6 — green PR, merge, green deploy, red PR demo
+- [ ] Part 5 — two triggers + approval on `helloworld-deploy`
+- [ ] Part 6 — green PR, merge, approve, green deploy, red PR demo
 - [ ] Part 7 — revision, bucket files, logs without the key

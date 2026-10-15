@@ -19,7 +19,8 @@ This file is the conversation log and the hand-off for the next session. Start w
 - The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
 - **Cloud Build migration complete (2026-10-15).** Pipeline = Cloud Build triggers `helloworld-pr` / `helloworld-deploy` (us-west1); GitHub Actions is manual-only (tag `github-actions-final`). Latest deploy: **revision 9** (`fbea836`).
-- **Next action:** rotate the `helloworld-app` key (issue 8.17 follow-up), then Day 4 (10.4).
+- **Day 4:** task 1 ✅ (manual approval on `helloworld-deploy`; revision 10). Latest deploy: **revision 10** (`1d1ec4a`).
+- **Next action:** rotate the `helloworld-app` key (8.17 follow-up, still open), then Day 4 task 2 (readable report), see `IMPLEMENTATION.md` 11.
 
 ### To continue in a new Claude Code session
 
@@ -132,3 +133,4 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 11. Step 8: Youssef opened PR #2 and merged it. `helloworld-pr` passed; `helloworld-deploy` passed all 10 steps and deployed **revision 8**; bundle, build-info, lint report and Newman report stored in the bucket under the commit.
 12. Found the API key printed in the Cloud Build log (Newman shows the request URL; Cloud Build does not mask secrets, GitHub did). Fixed `run-cloud.js` to mask it (`fbea836`) → build passed, **revision 9**, key shown as `***` (issue 8.17). While testing the fix locally Claude's first run (edit not yet applied) printed the key in the Claude Code session output; key rotation recommended. Deleted branch `cloud-build-pipeline`. **Migration complete.**
 13. Youssef plans to rebuild the CI/CD pipeline alone for practice. Added `CICD_GUIDE.md`: a standalone, console-based guide (Apigee test data → GCP setup → GitHub connection → pipeline files → triggers → test → verify), with the pitfalls we hit and a checklist. To be extended with each Day 4 task.
+14. Day 4 task 1: Youssef enabled **Require approval** on trigger `helloworld-deploy` (console). Claude verified it and pushed a harmless change (`1d1ec4a`, comment in `Q-ImposeQuota.xml`); the build waited as "Awaiting approval", Youssef approved it in Cloud Build → History, and it deployed **revision 10** (8/8 assertions, key masked). Documented in `IMPLEMENTATION.md` 11.1 and `CICD_GUIDE.md` 5.3.
