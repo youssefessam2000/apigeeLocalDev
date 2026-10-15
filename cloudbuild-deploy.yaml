@@ -1,0 +1,132 @@
+# Cloud Build — build, deploy and test the helloworld Apigee proxy.
+#
+# Trigger: helloworld-deploy (push to main; .md/.csv-only changes are ignored)
+#   install -> lint -> package -> store bundle in Cloud Storage
+#   -> deploy the stored bundle with the Apigee Maven plugin
+#   -> API tests (Newman) against the deployed proxy -> store test report
+#
+# Runs as cloudbuild-apigee-deployer. The access token comes from the build's
+# own identity (no keys); the API key comes from Secret Manager. Neither is
+# printed. Shell variables are written as $$VAR so Cloud Build does not treat
+# them as substitutions.
+
+steps:
+  - id: install
+    name: node:22
+    entrypoint: npm
+    args: ['ci']
+
+  - id: lint
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'lint']
+
+  - id: lint-report
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'lint:report']
+
+  - id: package
+    name: maven:3.9.9-eclipse-temurin-17
+    entrypoint: mvn
+    args: ['-B', 'package', '-P', 'nonprod']
+    env:
+      - 'APIGEE_ORG=${_APIGEE_ORG}'
+      - 'APIGEE_ENV=${_APIGEE_ENV}'
+
+  # Ties the bundle to the commit and the build that produced it.
+  - id: build-info
+    name: node:22
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cat > target/build-info.json <<EOF
+        {
+          "proxy": "helloworld",
+          "version": "1.0.0",
+          "commit": "$COMMIT_SHA",
+          "branch": "$BRANCH_NAME",
+          "build_id": "$BUILD_ID",
+          "trigger": "$TRIGGER_NAME",
+          "environment": "${_APIGEE_ENV}",
+          "built_at": "$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        }
+        EOF
+        cat target/build-info.json
+
+  # Keeps the exact bundle per commit: gs://<bucket>/helloworld/<commit>/
+  - id: store-bundle
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: gcloud
+    args:
+      - 'storage'
+      - 'cp'
+      - 'target/helloworld-1.0.0.zip'
+      - 'target/build-info.json'
+      - 'reports/apigeelint-baseline.json'
+      - 'gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/'
+
+  # Short-lived token of the build's service account, kept in a workspace file
+  # (never printed) and deleted by the deploy step.
+  - id: get-token
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args: ['-c', 'gcloud auth print-access-token > /workspace/.apigee-token']
+
+  # Runs only the deploy goal, so the stored zip is deployed as-is (no rebuild).
+  - id: deploy
+    name: maven:3.9.9-eclipse-temurin-17
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        export APIGEE_TOKEN="$$(cat /workspace/.apigee-token)"
+        rm -f /workspace/.apigee-token
+        mvn -B -P nonprod apigee-enterprise:deploy
+    env:
+      - 'APIGEE_ORG=${_APIGEE_ORG}'
+      - 'APIGEE_ENV=${_APIGEE_ENV}'
+
+  # The test result is saved and the step always succeeds, so the report is
+  # stored even when tests fail; store-report then fails the build.
+  - id: api-tests
+    name: node:22
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        node tests/postman/run-cloud.js ${_APIGEE_ENV}
+        echo $$? > reports/newman-exit-code
+    env:
+      - 'APIGEE_BASE_URL=${_APIGEE_BASE_URL}'
+    secretEnv: ['APIGEE_APIKEY']
+
+  - id: store-report
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        gcloud storage cp reports/newman-${_APIGEE_ENV}.xml gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/
+        code="$$(cat reports/newman-exit-code)"
+        echo "Newman exit code: $$code"
+        exit "$$code"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/${_APIKEY_SECRET}/versions/latest
+      env: APIGEE_APIKEY
+
+substitutions:
+  _APIGEE_ORG: project-953dc129-1db1-4aea-ae3
+  _APIGEE_ENV: eval
+  _APIGEE_BASE_URL: https://8.228.239.128.nip.io
+  _BUNDLE_BUCKET: project-953dc129-1db1-4aea-ae3-apigee-bundles
+  _APIKEY_SECRET: apigee-helloworld-apikey
+
+options:
+  # Required when a build runs as a user-managed service account.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s
