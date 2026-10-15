@@ -5,6 +5,7 @@
 **Sessions:** 2026-10-13 → 2026-10-14
 **Detailed record:** `IMPLEMENTATION.md` (commands, explanations, issues 8.1–8.14, design notes in section 10)
 **New machine setup:** `SETUP.md` (install tools, clone, sign in, verify)
+**Rebuild the pipeline yourself:** `CICD_GUIDE.md` (Cloud Build, console steps, practice checklist)
 
 This file is the conversation log and the hand-off for the next session. Start with **Resume here**.
 
@@ -130,3 +131,4 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 10. Steps 5–7 by Claude: wrote `cloudbuild.yaml` (PR: lint, package) and `cloudbuild-deploy.yaml` (store bundle in GCS, deploy, Newman with Secret Manager key, store report); created triggers `helloworld-pr` and `helloworld-deploy` in us-west1; switched `ci.yml` to `workflow_dispatch` only. Pushed on branch `cloud-build-pipeline` (`1d9ba7a`) to test via a PR. A manual `gcloud builds submit` test failed with 403 on the `_cloudbuild` bucket (issue 8.16); testing through the triggers instead.
 11. Step 8: Youssef opened PR #2 and merged it. `helloworld-pr` passed; `helloworld-deploy` passed all 10 steps and deployed **revision 8**; bundle, build-info, lint report and Newman report stored in the bucket under the commit.
 12. Found the API key printed in the Cloud Build log (Newman shows the request URL; Cloud Build does not mask secrets, GitHub did). Fixed `run-cloud.js` to mask it (`fbea836`) → build passed, **revision 9**, key shown as `***` (issue 8.17). While testing the fix locally Claude's first run (edit not yet applied) printed the key in the Claude Code session output; key rotation recommended. Deleted branch `cloud-build-pipeline`. **Migration complete.**
+13. Youssef plans to rebuild the CI/CD pipeline alone for practice. Added `CICD_GUIDE.md`: a standalone, console-based guide (Apigee test data → GCP setup → GitHub connection → pipeline files → triggers → test → verify), with the pitfalls we hit and a checklist. To be extended with each Day 4 task.
