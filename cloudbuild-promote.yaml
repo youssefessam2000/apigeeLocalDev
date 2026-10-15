@@ -1,0 +1,122 @@
+# Cloud Build — promote an already-tested helloworld revision to the next environment.
+#
+# Trigger: helloworld-promote (manual "Run", requires approval)
+#   resolve revision -> deploy that same revision to _TO_ENV (no rebuild)
+#   -> API tests (Newman) against _TO_ENV -> store reports
+#
+# In Apigee X a revision belongs to the org, so the exact revision tested in
+# _FROM_ENV is deployed to _TO_ENV unchanged. Leave _REVISION empty to promote
+# the revision currently deployed in _FROM_ENV; a given _REVISION must be
+# deployed in _FROM_ENV, so only tested revisions can be promoted.
+
+steps:
+  - id: resolve-revision
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        TOKEN="$$(gcloud auth print-access-token)"
+        API="https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}"
+        DEPLOYED="$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
+          "$$API/environments/${_FROM_ENV}/apis/${_PROXY}/deployments" \
+          | python3 -c 'import sys, json; print(" ".join(d["revision"] for d in json.load(sys.stdin).get("deployments", [])))')"
+        echo "Deployed in ${_FROM_ENV}: $${DEPLOYED:-none}"
+        REV="${_REVISION}"
+        if [ -z "$$REV" ]; then REV="$${DEPLOYED%% *}"; fi
+        if [ -z "$$REV" ] || ! echo " $$DEPLOYED " | grep -q " $$REV "; then
+          echo "Revision '$$REV' is not deployed in ${_FROM_ENV}; only tested revisions can be promoted."
+          exit 1
+        fi
+        echo "$$REV" > /workspace/revision
+        echo "Promoting ${_PROXY} revision $$REV: ${_FROM_ENV} -> ${_TO_ENV}"
+
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        REV="$$(cat /workspace/revision)"
+        TOKEN="$$(gcloud auth print-access-token)"
+        URL="https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}/environments/${_TO_ENV}/apis/${_PROXY}/revisions/$$REV/deployments"
+        # override=true replaces whatever revision is deployed in _TO_ENV.
+        curl -sf -X POST -H "Authorization: Bearer $$TOKEN" "$$URL?override=true" > /dev/null
+        for i in $$(seq 1 40); do
+          STATE="$$(curl -sf -H "Authorization: Bearer $$TOKEN" "$$URL" \
+            | python3 -c 'import sys, json; print(json.load(sys.stdin).get("state", ""))')"
+          echo "Deployment state: $$STATE"
+          [ "$$STATE" = "READY" ] && exit 0
+          [ "$$STATE" = "ERROR" ] && exit 1
+          sleep 15
+        done
+        echo "Deployment did not become READY in time."
+        exit 1
+
+  - id: install
+    name: node:22
+    entrypoint: npm
+    args: ['ci']
+
+  # Same pattern as cloudbuild-deploy.yaml: save the exit code so the reports
+  # are stored even when tests fail; store-report then fails the build.
+  - id: api-tests
+    name: node:22
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        node tests/postman/run-cloud.js ${_TO_ENV}
+        echo $$? > reports/newman-exit-code
+    env:
+      - 'APIGEE_BASE_URL=${_TO_BASE_URL}'
+    secretEnv: ['APIGEE_APIKEY']
+
+  - id: store-report
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        REV="$$(cat /workspace/revision)"
+        DEST="gs://${_BUNDLE_BUCKET}/${_PROXY}/promotions/${_TO_ENV}/rev-$$REV-$BUILD_ID"
+        cat > reports/promotion-info.json <<EOF
+        {
+          "proxy": "${_PROXY}",
+          "revision": "$$REV",
+          "from_env": "${_FROM_ENV}",
+          "to_env": "${_TO_ENV}",
+          "commit": "$COMMIT_SHA",
+          "build_id": "$BUILD_ID",
+          "promoted_at": "$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        }
+        EOF
+        cat reports/promotion-info.json
+        gcloud storage cp reports/promotion-info.json reports/newman-${_TO_ENV}.xml reports/newman-${_TO_ENV}.html "$$DEST/"
+        echo "Test report (HTML): https://storage.cloud.google.com/$${DEST#gs://}/newman-${_TO_ENV}.html"
+        code="$$(cat reports/newman-exit-code)"
+        echo "Newman exit code: $$code"
+        exit "$$code"
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/$PROJECT_ID/secrets/${_APIKEY_SECRET}/versions/latest
+      env: APIGEE_APIKEY
+
+substitutions:
+  _APIGEE_ORG: project-953dc129-1db1-4aea-ae3
+  _PROXY: helloworld
+  _FROM_ENV: eval
+  _TO_ENV: stagin
+  _TO_BASE_URL: https://staging.8.228.239.128.nip.io
+  # Empty = the revision currently deployed in _FROM_ENV.
+  _REVISION: ''
+  _BUNDLE_BUCKET: project-953dc129-1db1-4aea-ae3-apigee-bundles
+  _APIKEY_SECRET: apigee-helloworld-apikey
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 1200s
