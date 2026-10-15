@@ -734,6 +734,26 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 **Follow-up:** The key from before the fix is in the Cloud Logging entries of build `a6b473c6` (readable only by project members with log access). Rotate it: Apigee → Distribution → Apps → `helloworld-app` → add a new key, add it as a new version of secret `apigee-helloworld-apikey`, then revoke the old key.
 
+**Rotation done (2026-10-15, Youssef, console):**
+
+1. Apigee → **Distribution → Apps → `helloworld-app`** → **Credentials → Add key** for `helloworld-product` → copied the new key.
+2. **Security → Secret Manager → `apigee-helloworld-apikey` → + New version** → pasted the new key (version **2**).
+3. Apigee → `helloworld-app` → old key → **Revoke**.
+
+Order matters: add the new secret version **before** revoking the old key, otherwise the pipeline's tests fail in between. The pipeline reads `versions/latest`, so no pipeline change was needed.
+
+Checked by Claude (hash comparison, keys never printed):
+
+| Check | Result |
+|-------|--------|
+| App credentials | Old key `revoked`; new key `approved` for `helloworld-product` |
+| Secret | Version 2 (latest) = new key, 48 characters, no whitespace |
+| Old key on eval / staging | **401** / **401** |
+| New key on eval / staging | **200** / **200** |
+| Full Newman suite with the new key | eval 8/8, stagin 8/8; key not in output |
+
+The leaked value in build `a6b473c6`'s log is now a revoked key. Secret version 1 (the old key) can be **disabled**: Secret Manager → `apigee-helloworld-apikey` → version 1 → ⋮ → **Disable**.
+
 **Lesson:** When moving pipelines, check what the old platform did implicitly (here: secret masking). Prefer sending API keys in a header rather than the URL, so they do not show up in logs.
 
 ---
@@ -1584,7 +1604,7 @@ Nothing environment-specific is hard-coded in the proxy. Everything that changes
 | `helloworld-app` API key (eval) | **Secret Manager** `apigee-helloworld-apikey` (1 version) — the source of truth | `cloudbuild-apigee-deployer` + project owners | ✅ |
 | Same API key, old copy | **GitHub** secret `APIGEE_APIKEY` (used by the manual-only GitHub Actions workflow) | GitHub Actions runs of the repo | ⚠️ Duplicate. Delete when GitHub Actions is retired (GitHub → Settings → Secrets and variables → Actions). |
 | Same API key | Apigee app `helloworld-app` | Apigee admins | ✅ (it is the issuer) |
-| Same API key, **leaked** | Cloud Build log of build `a6b473c6` (issue 8.17) and the Claude Code session output | Project members with log access | ❌ **Rotate the key** (open follow-up) |
+| Old API key, **leaked** | Cloud Build log of build `a6b473c6` (issue 8.17) and the Claude Code session output | Project members with log access | ✅ **Revoked** (rotated 2026-10-15); disable secret version 1 |
 | Access tokens (deploy) | Created per build from the service account; workspace file deleted after use | — | ✅ Never stored, never printed |
 | Service account keys (JSON) | **None** — 0 user-managed keys on all 5 service accounts; creation is blocked by org policy `iam.disableServiceAccountKeyCreation` | — | ✅ |
 | GitHub → Cloud Build connection token | Secret Manager, managed by Cloud Build (`github-conn`) | Cloud Build service agent | ✅ Managed by Google |
@@ -1638,7 +1658,7 @@ For production, the manual GCP/Apigee resources would move to **Terraform** (e.g
 | 1 | No secrets in the current Git files | ✅ |
 | 2 | No real secrets in Git history | ✅ (emulator-only keys in old commits, accepted) |
 | 3 | No secrets in build artifacts (bundles, reports, build-info) | ✅ |
-| 4 | No secrets in pipeline logs | ❌ one old build (`a6b473c6`) → rotate key |
+| 4 | No secrets in pipeline logs | ✅ one old build (`a6b473c6`) has a key, **now revoked** (rotated 2026-10-15) |
 | 5 | Secrets stored in a secret manager, not in files or variables | ✅ Secret Manager (⚠️ old GitHub copy to delete) |
 | 6 | No long-lived credentials (service account keys) | ✅ none |
 | 7 | Tokens short-lived and never printed | ✅ |
@@ -1652,7 +1672,7 @@ For production, the manual GCP/Apigee resources would move to **Terraform** (e.g
 
 | Priority | Action | Who |
 |----------|--------|-----|
-| High | Rotate the `helloworld-app` key (new key → new secret version → revoke old key) | Youssef |
+| ~~High~~ ✅ | Rotate the `helloworld-app` key — **done 2026-10-15** (8.17) | Youssef |
 | Medium | Delete GitHub secret `APIGEE_APIKEY`, disable `github-apigee-deployer` and the WIF pool when GitHub Actions is retired | Youssef |
 | Low | Review/remove `apigee-cicd` and reduce `apigeeowner` from Owner | Youssef (client decision) |
 | Backlog | Debug mask for `apikey`; API key in a header; lifecycle rule on the bucket (e.g. delete after 90 days); per-environment secrets; Terraform for manual resources | Task 8 backlog |

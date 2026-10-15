@@ -20,7 +20,8 @@ This file is the conversation log and the hand-off for the next session. Start w
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
 - **Cloud Build migration complete (2026-10-15).** Pipeline = Cloud Build triggers `helloworld-pr` / `helloworld-deploy` (us-west1); GitHub Actions is manual-only (tag `github-actions-final`). Latest deploy: **revision 9** (`fbea836`).
 - **Day 4:** tasks 1, 2, 3, 4 ✅ (approval, HTML report, promotion eval → stagin, config & secret checklist). **Revision 11** deployed on **eval and stagin**. Issue 8.11 (staging certificate) resolved.
-- **Next action:** rotate the `helloworld-app` key (still open), then Day 4 task 6 (documentation & release notes), then 5, 7, 8 — see `IMPLEMENTATION.md` 11.
+- **Key rotated 2026-10-15** (secret version 2; old key revoked).
+- **Next action:** Day 4 task 6 (documentation & release notes), then 5, 7, 8 — see `IMPLEMENTATION.md` 11. Optional: disable secret version 1.
 
 ### To continue in a new Claude Code session
 
@@ -139,3 +140,4 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 17. Day 4 task 3: staging is attached and routed; only the TLS cert (8.11) and the product environment are missing. Claude wrote `cloudbuild-promote.yaml` (promote the revision deployed in eval to stagin via the Apigee API, no rebuild; refuses untested revisions; Newman; reports in `helloworld/promotions/...`) and `stagin.postman_environment.json`, created manual trigger `helloworld-promote` (approval required) and added the promotion files to `helloworld-deploy`'s ignored files (via describe → edit → import). A first version used Newman `--insecure`; the safety check blocked it, so the certificate will be fixed instead. Design in `IMPLEMENTATION.md` 11.3, guide Part 7b.
 18. Youssef added the Google-managed certificate `apigee-ssl-cert-staging` (free; ACTIVE in ~6 min) and `stagin` to `helloworld-product`. Claude verified: staging serves its own valid certificate, eval unchanged. Issue 8.11 resolved.
 19. Youssef ran and approved `helloworld-promote` (build `99b55021`): revision 11 promoted eval → stagin, deployment READY, staging tests 8/8 with normal TLS checks, reports + `promotion-info.json` in `helloworld/promotions/stagin/rev-11-…/`. Revision 11 on both environments, no new revision created. Task 3 ✅ (`IMPLEMENTATION.md` 11.3.6).
+20. Youssef rotated the API key (new key in `helloworld-app`, secret version 2, old key revoked). Claude verified by hash: secret latest = new approved key; old key → 401 on eval and staging, new key → 200; Newman 8/8 on both. Issue 8.17 follow-up closed (`IMPLEMENTATION.md` 8.17).
