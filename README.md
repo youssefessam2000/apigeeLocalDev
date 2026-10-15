@@ -6,6 +6,8 @@ A simple Apigee X proxy (`helloworld`) secured with an API key, with quota enfor
 
 ## Prerequisites
 
+> **New machine?** Follow [SETUP.md](SETUP.md) for a step-by-step install (Chocolatey, Node, JDK, Maven, gcloud, Docker, Cloud Code, apigeecli, Claude Code) and verification.
+
 | Tool | Purpose |
 |------|---------|
 | [VS Code](https://code.visualstudio.com/) + [Cloud Code extension](https://cloud.google.com/code/docs/vscode) | Apigee workspace and emulator management |

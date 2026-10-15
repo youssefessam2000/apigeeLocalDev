@@ -4,6 +4,7 @@
 **Repository:** https://github.com/youssefessam2000/apigeeLocalDev (private, branch `main` only)
 **Sessions:** 2026-10-13 → 2026-10-14
 **Detailed record:** `IMPLEMENTATION.md` (commands, explanations, issues 8.1–8.14, design notes in section 10)
+**New machine setup:** `SETUP.md` (install tools, clone, sign in, verify)
 
 This file is the conversation log and the hand-off for the next session. Start with **Resume here**.
 
@@ -16,9 +17,11 @@ This file is the conversation log and the hand-off for the next session. Start w
 - Day 1 ✅, Day 2 ✅, Day 3 ✅ (all tasks checked against `Apigee_CICD_POC.csv`).
 - The GitHub Actions pipeline works: a code push to `main` deploys to Apigee `eval` automatically. Latest pipeline deploy: **revision 7** (`28bfdbe`, comment in `verify-api-key.xml`).
 - **Decision taken:** move the pipeline to **Cloud Build**, because the client works on GCP (`IMPLEMENTATION.md` 10.3).
-- **Next action:** start the Cloud Build migration (plan in 10.3), then Day 4 (plan in 10.4).
+- **Next action:** Cloud Build migration (10.3) — step 1 already done (APIs were enabled); Youssef runs step 2 (service account + roles, commands in session 3), then step 3. Then Day 4 (10.4).
 
 ### To continue in a new Claude Code session
+
+On a new PC or laptop, first follow `SETUP.md`.
 
 Open Claude Code and say, for example:
 
@@ -110,3 +113,10 @@ mvn install -P nonprod                                       # do NOT run mvn cl
 18. Demo: added a comment to `verify-api-key.xml` and pushed → pipeline deployed revision 7 in ~2.5 minutes; compared bundles of revisions 6 and 7 to prove it (9.8).
 19. Discussed developing in the Apigee console (Git stays the source of truth, 10.2) and Cloud Build vs GitHub Actions; **decided to move to Cloud Build** because the client uses GCP (10.3).
 20. Updated `IMPLEMENTATION.md` (section 10) and rewrote this file as a hand-off.
+
+### Session 3 — 2026-10-15 (Cloud Build migration start, machine setup)
+
+1. Checked Cloud Build migration step 1: `cloudbuild.googleapis.com` and `secretmanager.googleapis.com` were already enabled — nothing to do.
+2. Gave Youssef the step 2 commands (create `cloudbuild-apigee-deployer`, grant Apigee API Admin, Apigee Environment Admin, Secret Manager Secret Accessor, Logs Writer). Waiting for Youssef to run them; bucket write is granted after the bucket is created in step 3.
+3. Confirmed everything is pushed to GitHub; only `node_modules/`, `target/`, `reports/` and the API key are local by design.
+4. Added `SETUP.md`: step-by-step install for a new Windows machine (Chocolatey, Git, Node 22, apigeelint, Newman, Temurin 17, Maven, gcloud, VS Code + Cloud Code, Docker, Claude Code; optional apigeecli, gh, Postman), clone, sign-in and verification.
