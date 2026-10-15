@@ -1,5 +1,6 @@
 <Quota async="false" continueOnError="false" enabled="true" name="Q-ImposeQuota">
     <DisplayName>Q-ImposeQuota</DisplayName>
+    <!-- Limits come from the API product (helloworld-product: 100 per minute); count/month are fallbacks. -->
     <Allow countRef="verifyapikey.verify-api-key.apiproduct.developer.quota.limit" count="2000"/>
     <Interval ref="verifyapikey.verify-api-key.apiproduct.developer.quota.interval">1</Interval>
     <Distributed>true</Distributed>
