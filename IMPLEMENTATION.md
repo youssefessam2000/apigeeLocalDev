@@ -721,6 +721,20 @@ Verified: the service account now has `roles/apigee.apiAdminV2` and `roles/apige
 
 ---
 
+### 8.17 API key visible in the Cloud Build log
+
+**Issue:** The first Cloud Build deploy (build `a6b473c6`, revision 8) printed the real API key in the `api-tests` step: Newman's CLI output shows each request URL, `GET https://8.228.239.128.nip.io/helloworld?apikey=<key>`.
+
+**Root cause:** GitHub Actions automatically masks registered secrets in logs, so this never showed on Day 3. Cloud Build does **not** mask values from Secret Manager in step output. The test report (`newman-eval.xml`) did not contain the key.
+
+**Solution:** `tests/postman/run-cloud.js` now captures Newman's output and replaces the key with `***` before printing (commit `fbea836`). Works the same in Cloud Build, GitHub Actions and locally. Verified in build `46f86883`: 0 occurrences of the key, URL shows `apikey=***`.
+
+**Follow-up:** The key from before the fix is in the Cloud Logging entries of build `a6b473c6` (readable only by project members with log access). Rotate it: Apigee → Distribution → Apps → `helloworld-app` → add a new key, add it as a new version of secret `apigee-helloworld-apikey`, then revoke the old key.
+
+**Lesson:** When moving pipelines, check what the old platform did implicitly (here: secret masking). Prefer sending API keys in a header rather than the URL, so they do not show up in logs.
+
+---
+
 ## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
@@ -1142,7 +1156,7 @@ Export options:
 | 5. Cloud Build files | 2026-10-15 | `cloudbuild.yaml` + `cloudbuild-deploy.yaml` written by Claude (branch `cloud-build-pipeline`, commit `1d9ba7a`). |
 | 6. Triggers | 2026-10-15 | `helloworld-pr` and `helloworld-deploy` created by Claude (us-west1). |
 | 7. GitHub Actions manual-only | 2026-10-15 | `ci.yml` now runs only on `workflow_dispatch` (same commit `1d9ba7a`). |
-| 8. Test | — | Next: open the PR `cloud-build-pipeline` → `main` (runs `helloworld-pr`), then merge (runs `helloworld-deploy`). |
+| 8. Test | 2026-10-15 | PR #2 → `helloworld-pr` green; merge `831e59e` → `helloworld-deploy` green, **revision 8**. Found the API key in the build log (issue 8.17); fix `fbea836` → **revision 9**, key masked. Demo branch deleted. **Migration complete.** |
 
 **Step 0 — tag the GitHub Actions version**
 
@@ -1324,6 +1338,46 @@ A trigger starts a build when something happens in the repo.
 In `.github/workflows/ci.yml`, the `pull_request` and `push` triggers were removed; only `workflow_dispatch` remains. Pushes and PRs now run only Cloud Build (no double deploy). The workflow can still be run by hand: GitHub → **Actions → CI → Run workflow**. The automatic version is kept as tag `github-actions-final`.
 
 Steps 5 and 7 were pushed on branch `cloud-build-pipeline` (commit `1d9ba7a`), not directly to `main`, so the change can be tested through a pull request in step 8.
+
+**Step 8 — Test the new pipeline** (Youssef + Claude)
+
+1. GitHub → **Pull requests → New pull request** → base `main` ← compare `cloud-build-pipeline` → **Create pull request** (PR #2).
+2. The PR shows a **Cloud Build** check. In the console: ☰ → **Cloud Build → History** (region us-west1) → build of trigger `helloworld-pr`.
+3. When green → **Merge pull request**. The push to `main` starts trigger `helloworld-deploy`.
+4. Check the deploy build: **Cloud Build → History** → open the build → each step shows a green tick; click a step to see its log.
+5. Check the deployed revision: ☰ → **Apigee → Proxy development → API proxies → helloworld** → **Deployments** shows the new revision on `eval`.
+6. Check the stored files: ☰ → **Cloud Storage → Buckets → `project-953dc129-1db1-4aea-ae3-apigee-bundles` → `helloworld/<commit>/`**.
+
+Results:
+
+| Build | Trigger | Commit | Steps | Result |
+|-------|---------|--------|-------|--------|
+| `84195da3` | `helloworld-pr` | `1d9ba7a` (PR #2) | install, lint, package | ✅ SUCCESS (~1 min) |
+| `a6b473c6` | `helloworld-deploy` | `831e59e` (merge) | all 10 steps | ✅ SUCCESS (3 min 24 s) — **revision 8** deployed, Newman 3 requests / 8 assertions / 0 failed |
+| `46f86883` | `helloworld-deploy` | `fbea836` (key masking fix) | all 10 steps | ✅ SUCCESS — **revision 9**, key shown as `***` in the log |
+
+Files stored for commit `831e59e` (`gs://project-953dc129-1db1-4aea-ae3-apigee-bundles/helloworld/831e59ecf1ccf715a98cc8c121dc7b58f002868d/`):
+
+| File | Size | What it is |
+|------|------|-----------|
+| `helloworld-1.0.0.zip` | 2,159 B | The exact bundle that was deployed |
+| `build-info.json` | 277 B | Commit, branch, build ID, trigger, environment, time |
+| `apigeelint-baseline.json` | 1,309 B | Lint report |
+| `newman-eval.xml` | 1,548 B | Post-deploy test report (JUnit) |
+
+So a commit can be traced to its build, bundle, Apigee revision and test report.
+
+GitHub Actions did not run for the PR or the merge (`ci.yml` is manual-only). The demo branch `cloud-build-pipeline` was deleted afterwards.
+
+**Pipeline now (Cloud Build):**
+
+```
+Pull request to main ──► helloworld-pr:      install → lint → package                          (no deploy, no secrets)
+Push / merge to main ──► helloworld-deploy:  install → lint → package → store bundle (GCS)
+                                             → deploy (Maven, token of cloudbuild-apigee-deployer)
+                                             → Newman tests (key from Secret Manager) → store report (GCS)
+.md / .csv only      ──► nothing runs
+```
 
 **Migration plan:**
 
