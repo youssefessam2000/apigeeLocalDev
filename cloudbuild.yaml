@@ -1,0 +1,37 @@
+# Cloud Build — pull request validation for the helloworld Apigee proxy.
+#
+# Trigger: helloworld-pr (pull requests to main; .md/.csv-only changes are ignored)
+#   install -> lint -> package
+#
+# No deployment and no secrets: pull request code is not trusted until it is
+# merged. Deployment is in cloudbuild-deploy.yaml (push to main).
+
+steps:
+  - id: install
+    name: node:22
+    entrypoint: npm
+    args: ['ci']
+
+  - id: lint
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'lint']
+
+  # Builds target/helloworld-1.0.0.zip to prove the bundle packages.
+  - id: package
+    name: maven:3.9.9-eclipse-temurin-17
+    entrypoint: mvn
+    args: ['-B', 'package', '-P', 'nonprod']
+    env:
+      - 'APIGEE_ORG=${_APIGEE_ORG}'
+      - 'APIGEE_ENV=${_APIGEE_ENV}'
+
+substitutions:
+  _APIGEE_ORG: project-953dc129-1db1-4aea-ae3
+  _APIGEE_ENV: eval
+
+options:
+  # Required when a build runs as a user-managed service account.
+  logging: CLOUD_LOGGING_ONLY
+
+timeout: 900s

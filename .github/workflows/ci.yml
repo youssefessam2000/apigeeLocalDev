@@ -12,14 +12,10 @@
 
 name: CI
 
+# Replaced by Cloud Build (cloudbuild.yaml, cloudbuild-deploy.yaml) on 2026-10-15.
+# Kept for reference and manual runs only (Actions tab -> CI -> Run workflow),
+# so pushes are not deployed twice. The automatic version is tag github-actions-final.
 on:
-  pull_request:
-    branches: [main]
-    paths-ignore: ['**.md', '**.csv']
-  push:
-    branches: [main]
-    # Documentation-only changes do not build or deploy a new revision.
-    paths-ignore: ['**.md', '**.csv']
   workflow_dispatch:
 
 permissions:
