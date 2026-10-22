@@ -31,6 +31,6 @@ substitutions:
   _APIGEE_ENV: eval
 
 options:
-  # Required when a build runs as a user-managed service account.
+  # Required when a build runs as a user-managed service account...
   logging: CLOUD_LOGGING_ONLY
 timeout: 900s
