@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<GenerateJWT continueOnError="false" enabled="true" name="GJ-GenerateJWT">
+  <DisplayName>GJ-GenerateJWT</DisplayName>
+  <Algorithm>HS256</Algorithm>
+  <SecretKey>
+    <Value ref="private.secretkey"/>
+  </SecretKey>
+  <ExpiresIn>1h</ExpiresIn>
+  <Issuer>https://34.102.206.98.nip.io</Issuer>
+  <Audience>https://34.102.206.98.nip.io/api/v1/kpis</Audience>
+  <Subject>MOT-KPI-Consumer</Subject>
+  <AdditionalClaims>
+    <Claim name="scope">kpi:read</Claim>
+  </AdditionalClaims>
+  <OutputVariable>jwt_token</OutputVariable>
+</GenerateJWT>

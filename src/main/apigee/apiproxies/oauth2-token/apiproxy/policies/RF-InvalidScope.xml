@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault continueOnError="false" enabled="true" name="RF-InvalidScope">
+  <DisplayName>RF-InvalidScope</DisplayName>
+  <FaultResponse>
+    <Set>
+      <Headers>
+        <Header name="Content-Type">application/json</Header>
+      </Headers>
+      <Payload contentType="application/json">
+{
+  "error": "invalid_scope",
+  "error_description": "The requested scope is missing or invalid. Allowed scope: 'kpi:read'."
+}
+      </Payload>
+      <StatusCode>400</StatusCode>
+    </Set>
+  </FaultResponse>
+</RaiseFault>
