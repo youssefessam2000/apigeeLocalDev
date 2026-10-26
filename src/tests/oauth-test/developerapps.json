@@ -1,0 +1,18 @@
+[
+  {
+    "attributes": [
+      {
+        "name": "sample_attribute_0",
+        "value": "sample_attribute_value_0"
+      }
+    ],
+    "developerEmail": "youssefessamm24@gmail.com",
+    "name": "petSore_app",
+    "displayName": "petSore_app",
+    "callbackUrl": "",
+    "apiProducts": [
+      "petStore_product"
+    ],
+    "expiryType": "never"
+  }
+]

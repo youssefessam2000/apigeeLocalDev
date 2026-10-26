@@ -2,6 +2,9 @@
   "proxies": [
     {
       "name": "helloworld"
+    },
+    {
+      "name": "oauth2-token"
     }
   ],
   "sharedflows": []
