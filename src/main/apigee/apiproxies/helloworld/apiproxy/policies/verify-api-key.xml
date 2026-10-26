@@ -1,5 +1,4 @@
 <VerifyAPIKey async="false" continueOnError="false" enabled="true" name="verify-api-key">
-    <!-- Validates the API key sent as the ?apikey= query parameter; requests without a valid key get 401. -->
     <DisplayName>verify-api-key</DisplayName>
     <APIKey ref="request.queryparam.apikey"/>
 </VerifyAPIKey>

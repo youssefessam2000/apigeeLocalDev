@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxyEndpoint name="default">
+  <PreFlow name="PreFlow">
+    <Request/>
+    <Response/>
+  </PreFlow>
+  <Flows>
+    <Flow name="token">
+      <Request>
+        <Step><Name>EV-ExtractCredentials</Name></Step>
+        <Step><Name>EV-ExtractScope</Name></Step>
+        <Step>
+          <Name>RF-InvalidScope</Name>
+          <Condition>requested_scope != "kpi:read"</Condition>
+        </Step>
+        <Step>
+          <Name>RF-InvalidGrantOrSecret</Name>
+          <Condition>requested_grant_type != "client_credentials"</Condition>
+        </Step>
+        <Step><Name>VAK-VerifyClientCredentials</Name></Step>
+        <Step>
+          <Name>RF-InvalidGrantOrSecret</Name>
+          <Condition>verifyapikey.VAK-VerifyClientCredentials.client_secret != requested_client_secret</Condition>
+        </Step>
+        <Step><Name>AM-SetSecretKey</Name></Step>
+        <Step><Name>GJ-GenerateJWT</Name></Step>
+      </Request>
+      <Response>
+        <Step><Name>AM-ReturnJWTResponse</Name></Step>
+      </Response>
+      <Condition>(proxy.pathsuffix MatchesPath "/token") and (request.verb = "POST")</Condition>
+    </Flow>
+  </Flows>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <HTTPProxyConnection>
+    <BasePath>/oauth2</BasePath>
+  </HTTPProxyConnection>
+  <RouteRule name="noroute"/>
+</ProxyEndpoint>
