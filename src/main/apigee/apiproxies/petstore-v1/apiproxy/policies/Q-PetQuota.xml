@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- 100 calls per minute per client (client_id claim of the token). -->
+<Quota continueOnError="false" enabled="true" name="Q-PetQuota" type="calendar">
+  <DisplayName>Q-PetQuota</DisplayName>
+  <Identifier ref="jwt.VJ-VerifyToken.claim.client_id"/>
+  <Allow count="100"/>
+  <Interval>1</Interval>
+  <TimeUnit>minute</TimeUnit>
+  <StartTime>2026-01-01 00:00:00</StartTime>
+  <Distributed>true</Distributed>
+  <Synchronous>true</Synchronous>
+</Quota>

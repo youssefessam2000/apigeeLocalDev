@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault continueOnError="false" enabled="true" name="RF-InsufficientScope">
+  <DisplayName>RF-InsufficientScope</DisplayName>
+  <FaultResponse>
+    <AssignVariable>
+      <Name>envelope.errorCode</Name>
+      <Value>403</Value>
+    </AssignVariable>
+    <AssignVariable>
+      <Name>envelope.errorMessage</Name>
+      <Value>Access denied. The access token does not have the 'pet:read' scope.</Value>
+    </AssignVariable>
+    <Set>
+      <StatusCode>403</StatusCode>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

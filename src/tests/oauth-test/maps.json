@@ -1,1 +1,10 @@
-[]
+[
+  {
+    "name": "oauth-config",
+    "scope": "environment",
+    "environment": "dev",
+    "entries": {
+      "jwt-signing-key": "local-emulator-only-signing-key-32-bytes!!"
+    }
+  }
+]

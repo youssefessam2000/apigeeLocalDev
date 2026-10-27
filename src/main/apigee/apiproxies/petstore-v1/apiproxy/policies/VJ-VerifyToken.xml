@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Reads "Authorization: Bearer <jwt>" (the default source) and checks the token from oauth2-token. -->
+<VerifyJWT continueOnError="false" enabled="true" name="VJ-VerifyToken">
+  <DisplayName>VJ-VerifyToken</DisplayName>
+  <Algorithm>HS256</Algorithm>
+  <SecretKey>
+    <Value ref="private.secretkey"/>
+  </SecretKey>
+  <Issuer>https://34.102.206.98.nip.io</Issuer>
+  <TimeAllowance>30s</TimeAllowance>
+</VerifyJWT>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- UseEffectiveCount: sliding 1-second window, so up to 10 calls in a short burst are allowed
+     (without it, 10ps is smoothed to one call every 100 ms). -->
+<SpikeArrest continueOnError="false" enabled="true" name="SA-SpikeArrest">
+  <DisplayName>SA-SpikeArrest</DisplayName>
+  <Rate>10ps</Rate>
+  <UseEffectiveCount>true</UseEffectiveCount>
+</SpikeArrest>

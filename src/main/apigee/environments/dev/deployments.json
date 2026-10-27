@@ -5,7 +5,14 @@
     },
     {
       "name": "oauth2-token"
+    },
+    {
+      "name": "petstore-v1"
     }
   ],
-  "sharedflows": []
+  "sharedflows": [
+    {
+      "name": "common-envelope"
+    }
+  ]
 }

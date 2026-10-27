@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Reads the pet id as text so int64 values keep every digit (used by map-pet.js). -->
+<ExtractVariables continueOnError="false" enabled="true" name="EV-ExtractPet">
+  <DisplayName>EV-ExtractPet</DisplayName>
+  <Source clearPayload="false">response</Source>
+  <VariablePrefix>pet</VariablePrefix>
+  <JSONPayload>
+    <Variable name="id" type="string">
+      <JSONPath>$.id</JSONPath>
+    </Variable>
+  </JSONPayload>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</ExtractVariables>
