@@ -23,12 +23,15 @@ var message = context.getVariable("envelope.errorMessage");
 var retryAfter = null;
 
 if (!code) {
+  // Both are 429; the message and Retry-After tell the client which limit was hit.
   if (faultName === "SpikeArrestViolation") {
     code = 429;
     retryAfter = 1;
+    message = message || "Too many requests in a short time. Slow down and retry after 1 second.";
   } else if (faultName === "QuotaViolation") {
     code = 429;
     retryAfter = parseInt(context.getVariable("envelope.quotaRetryAfter"), 10) || 60;
+    message = message || "Quota exceeded for this client. Retry after the duration specified in Retry-After.";
   } else if (faultName === "GatewayTimeout" || faultName === "ConnectionTimeout" || policyStatus === 504) {
     code = 504;
   } else if (faultName === "ErrorResponseCode") {

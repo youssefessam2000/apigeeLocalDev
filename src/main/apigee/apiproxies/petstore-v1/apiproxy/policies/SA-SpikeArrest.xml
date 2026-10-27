@@ -3,6 +3,6 @@
      (without it, 10ps is smoothed to one call every 100 ms). -->
 <SpikeArrest continueOnError="false" enabled="true" name="SA-SpikeArrest">
   <DisplayName>SA-SpikeArrest</DisplayName>
-  <Rate>10ps</Rate>
+  <Rate>2ps</Rate>
   <UseEffectiveCount>true</UseEffectiveCount>
 </SpikeArrest>

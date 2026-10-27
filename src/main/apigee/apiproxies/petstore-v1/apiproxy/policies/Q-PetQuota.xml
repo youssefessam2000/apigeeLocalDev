@@ -3,7 +3,7 @@
 <Quota continueOnError="false" enabled="true" name="Q-PetQuota" type="calendar">
   <DisplayName>Q-PetQuota</DisplayName>
   <Identifier ref="jwt.VJ-VerifyToken.claim.client_id"/>
-  <Allow count="100"/>
+  <Allow count="5"/>
   <Interval>1</Interval>
   <TimeUnit>minute</TimeUnit>
   <StartTime>2026-01-01 00:00:00</StartTime>
