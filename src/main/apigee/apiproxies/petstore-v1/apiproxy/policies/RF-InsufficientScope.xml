@@ -8,7 +8,7 @@
     </AssignVariable>
     <AssignVariable>
       <Name>envelope.errorMessage</Name>
-      <Value>Access denied. The access token does not have the 'pet:read' scope.</Value>
+      <Value>Access denied. The access token does not have the 'read:pets' scope.</Value>
     </AssignVariable>
     <Set>
       <StatusCode>403</StatusCode>

@@ -1,0 +1,129 @@
+{
+  "info": {
+    "name": "Petstore v1 (Apigee)",
+    "description": "Run '1. Get token (read:pets)' first; it saves the token for the other requests. Set baseUrl to http://localhost:8998 for the emulator or the Apigee X host.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8998" },
+    { "key": "clientId", "value": "WZ3ZrXAgWhk8Ojhg5lR4uKbY73moYXBJ" },
+    { "key": "clientSecret", "value": "GsnX8wLjGaH1AeGO" },
+    { "key": "petId", "value": "99" },
+    { "key": "accessToken", "value": "" },
+    { "key": "writeToken", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Get token (read:pets)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "pm.collectionVariables.set('accessToken', pm.response.json().access_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+        "body": { "mode": "urlencoded", "urlencoded": [
+          { "key": "grant_type", "value": "client_credentials" },
+          { "key": "client_id", "value": "{{clientId}}" },
+          { "key": "client_secret", "value": "{{clientSecret}}" },
+          { "key": "scope", "value": "read:pets" }
+        ] },
+        "url": "{{baseUrl}}/oauth2/token"
+      }
+    },
+    {
+      "name": "2. Get pet by id (200)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "pm.test('isSuccess true', () => pm.expect(pm.response.json().header.isSuccess).to.eql(true));"
+      ] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/petstore/v1/pets/{{petId}}"
+      }
+    },
+    {
+      "name": "3. Pet not found (404)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('404', () => pm.response.to.have.status(404));"] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/petstore/v1/pets/1234567"
+      }
+    },
+    {
+      "name": "4. Invalid petId (400)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('400', () => pm.response.to.have.status(400));"] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/petstore/v1/pets/abc"
+      }
+    },
+    {
+      "name": "5. No token (401)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('401', () => pm.response.to.have.status(401));"] } }],
+      "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/petstore/v1/pets/{{petId}}" }
+    },
+    {
+      "name": "6. Bad token (401)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('401', () => pm.response.to.have.status(401));"] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer abc.def.ghi" }],
+        "url": "{{baseUrl}}/petstore/v1/pets/{{petId}}"
+      }
+    },
+    {
+      "name": "7a. Get token (write:pets)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('200', () => pm.response.to.have.status(200));",
+        "pm.collectionVariables.set('writeToken', pm.response.json().access_token);"
+      ] } }],
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/x-www-form-urlencoded" }],
+        "body": { "mode": "urlencoded", "urlencoded": [
+          { "key": "grant_type", "value": "client_credentials" },
+          { "key": "client_id", "value": "{{clientId}}" },
+          { "key": "client_secret", "value": "{{clientSecret}}" },
+          { "key": "scope", "value": "write:pets" }
+        ] },
+        "url": "{{baseUrl}}/oauth2/token"
+      }
+    },
+    {
+      "name": "7b. Wrong scope (403)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('403', () => pm.response.to.have.status(403));"] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{writeToken}}" }],
+        "url": "{{baseUrl}}/petstore/v1/pets/{{petId}}"
+      }
+    },
+    {
+      "name": "8. Unknown path (404)",
+      "event": [{ "listen": "test", "script": { "exec": ["pm.test('404', () => pm.response.to.have.status(404));"] } }],
+      "request": {
+        "method": "GET",
+        "header": [{ "key": "Authorization", "value": "Bearer {{accessToken}}" }],
+        "url": "{{baseUrl}}/petstore/v1/owners"
+      }
+    },
+    {
+      "name": "9. Own X-Request-Id (traceId echoed)",
+      "event": [{ "listen": "test", "script": { "exec": [
+        "pm.test('traceId = X-Request-Id', () => pm.expect(pm.response.json().header.traceId).to.eql('my-test-id-123'));"
+      ] } }],
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "Authorization", "value": "Bearer {{accessToken}}" },
+          { "key": "X-Request-Id", "value": "my-test-id-123" }
+        ],
+        "url": "{{baseUrl}}/petstore/v1/pets/{{petId}}"
+      }
+    }
+  ]
+}

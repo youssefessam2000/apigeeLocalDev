@@ -7,8 +7,8 @@
   </SecretKey>
   <ExpiresIn>1h</ExpiresIn>
   <Issuer>https://34.102.206.98.nip.io</Issuer>
-  <Audience>https://34.102.206.98.nip.io/api/v1/kpis</Audience>
-  <Subject>MOT-KPI-Consumer</Subject>
+  <Audience>https://34.102.206.98.nip.io/petstore/v1</Audience>
+  <Subject ref="requested_client_id"/>
   <AdditionalClaims>
     <Claim name="scope" ref="requested_scope"/>
     <Claim name="client_id" ref="requested_client_id"/>

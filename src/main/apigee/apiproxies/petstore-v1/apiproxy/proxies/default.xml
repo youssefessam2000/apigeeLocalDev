@@ -16,7 +16,7 @@
       </Step>
       <Step>
         <Name>RF-InsufficientScope</Name>
-        <Condition>!(jwt.VJ-VerifyToken.claim.scope ~~ "(.* )?pet:read( .*)?")</Condition>
+        <Condition>!(jwt.VJ-VerifyToken.claim.scope ~~ "(.* )?read:pets( .*)?")</Condition>
       </Step>
       <Step>
         <Name>Q-PetQuota</Name>
