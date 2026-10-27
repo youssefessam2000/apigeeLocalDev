@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Builds the backend call: GET https://petstore.swagger.io/v2/pet/{petId}. -->
+<AssignMessage continueOnError="false" enabled="true" name="AM-PetstoreRequest">
+  <DisplayName>AM-PetstoreRequest</DisplayName>
+  <Remove>
+    <Headers>
+      <Header name="Authorization"/>
+      <Header name="X-Request-Id"/>
+    </Headers>
+    <QueryParams/>
+  </Remove>
+  <Set>
+    <Headers>
+      <Header name="Accept">application/json</Header>
+      <Header name="api_key">special-key</Header>
+    </Headers>
+    <Verb>GET</Verb>
+  </Set>
+  <AssignVariable>
+    <Name>target.copy.pathsuffix</Name>
+    <Value>false</Value>
+  </AssignVariable>
+  <AssignVariable>
+    <Name>target.url</Name>
+    <Template>https://petstore.swagger.io/v2/pet/{petId}</Template>
+  </AssignVariable>
+  <IgnoreUnresolvedVariables>false</IgnoreUnresolvedVariables>
+</AssignMessage>

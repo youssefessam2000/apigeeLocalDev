@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Javascript continueOnError="false" enabled="true" timeLimit="200" name="JS-BuildSuccess">
+  <DisplayName>JS-BuildSuccess</DisplayName>
+  <IncludeURL>jsc://envelope-header.js</IncludeURL>
+  <ResourceURL>jsc://build-success.js</ResourceURL>
+</Javascript>

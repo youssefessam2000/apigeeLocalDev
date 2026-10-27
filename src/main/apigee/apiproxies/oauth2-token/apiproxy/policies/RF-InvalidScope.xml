@@ -9,7 +9,7 @@
       <Payload contentType="application/json">
 {
   "error": "invalid_scope",
-  "error_description": "The requested scope is missing or invalid. Allowed scope: 'kpi:read'."
+  "error_description": "The requested scope is missing or invalid. Allowed scopes: 'kpi:read', 'pet:read'."
 }
       </Payload>
       <StatusCode>400</StatusCode>

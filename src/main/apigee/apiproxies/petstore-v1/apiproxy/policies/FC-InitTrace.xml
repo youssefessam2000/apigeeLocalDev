@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<FlowCallout continueOnError="false" enabled="true" name="FC-InitTrace">
+  <DisplayName>FC-InitTrace</DisplayName>
+  <Parameters>
+    <Parameter name="envelope.action">init</Parameter>
+  </Parameters>
+  <SharedFlowBundle>common-envelope</SharedFlowBundle>
+</FlowCallout>

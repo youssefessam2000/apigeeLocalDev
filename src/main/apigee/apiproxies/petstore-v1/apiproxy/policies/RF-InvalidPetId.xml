@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault continueOnError="false" enabled="true" name="RF-InvalidPetId">
+  <DisplayName>RF-InvalidPetId</DisplayName>
+  <FaultResponse>
+    <AssignVariable>
+      <Name>envelope.errorCode</Name>
+      <Value>400</Value>
+    </AssignVariable>
+    <AssignVariable>
+      <Name>envelope.errorMessage</Name>
+      <Value>Invalid path parameter 'petId'. It must be a positive integer (int64).</Value>
+    </AssignVariable>
+    <Set>
+      <StatusCode>400</StatusCode>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

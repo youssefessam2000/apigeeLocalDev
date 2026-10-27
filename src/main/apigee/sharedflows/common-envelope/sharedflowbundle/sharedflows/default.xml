@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  common-envelope: the one place where the standard response envelope is built.
+
+  Call it with a FlowCallout and set the parameter envelope.action:
+    init     first step of the proxy PreFlow; sets envelope.traceId
+    success  wraps envelope.data (JSON string) as {header, data}
+    error    builds {header, error} from the fault (status code, Retry-After)
+-->
+<SharedFlow name="default">
+  <Step>
+    <Name>JS-InitTrace</Name>
+    <Condition>envelope.action = "init"</Condition>
+  </Step>
+  <Step>
+    <Name>JS-BuildSuccess</Name>
+    <Condition>envelope.action = "success"</Condition>
+  </Step>
+  <Step>
+    <Name>JS-BuildError</Name>
+    <Condition>envelope.action = "error"</Condition>
+  </Step>
+</SharedFlow>

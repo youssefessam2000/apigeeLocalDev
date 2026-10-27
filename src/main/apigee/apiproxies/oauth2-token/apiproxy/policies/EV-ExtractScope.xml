@@ -1,34 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<ExtractVariables async="false" continueOnError="false" enabled="true" name="EV-ExtractScope">
-    <DisplayName>EV-ExtractScope</DisplayName>
-    <Properties/>
-    <URIPath>
-      <Pattern ignoreCase="true">/a/{extract_into_var}</Pattern>
-    </URIPath>
-    <QueryParam name="query_param_name">
-      <Pattern ignoreCase="true">{extract_into_var}</Pattern>
-    </QueryParam>
-    <Header name="header_name">
-      <Pattern ignoreCase="true">{extract_into_var}</Pattern>
-    </Header>
-    <FormParam name="form_param_name">
-      <Pattern ignoreCase="true">{extract_into_var}</Pattern>
-    </FormParam>
-    <Variable name="variable_name">
-      <Pattern ignoreCase="true">{extract_into_var}</Pattern>
-    </Variable>
-    <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
-    <JSONPayload>
-        <Variable name="{extract_into_var}">
-            <JSONPath>{json_path}</JSONPath>
-        </Variable>
-    </JSONPayload>
-    <XMLPayload stopPayloadProcessing="false">
-        <Namespaces/>
-        <Variable name="{extract_into_var}">
-            <XPath>//test/example</XPath>
-        </Variable>
-    </XMLPayload>
-    <Source clearPayload="false">request</Source>
-    <VariablePrefix>apigee</VariablePrefix>
+<ExtractVariables continueOnError="false" enabled="true" name="EV-ExtractScope">
+  <DisplayName>EV-ExtractScope</DisplayName>
+  <Source clearPayload="false">request</Source>
+  <FormParam name="scope">
+    <Pattern ignoreCase="true">{requested_scope}</Pattern>
+  </FormParam>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
 </ExtractVariables>

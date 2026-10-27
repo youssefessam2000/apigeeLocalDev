@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<FlowCallout continueOnError="false" enabled="true" name="FC-BuildError">
+  <DisplayName>FC-BuildError</DisplayName>
+  <Parameters>
+    <Parameter name="envelope.action">error</Parameter>
+  </Parameters>
+  <SharedFlowBundle>common-envelope</SharedFlowBundle>
+</FlowCallout>

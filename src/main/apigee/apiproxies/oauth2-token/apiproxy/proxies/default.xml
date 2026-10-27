@@ -11,7 +11,7 @@
         <Step><Name>EV-ExtractScope</Name></Step>
         <Step>
           <Name>RF-InvalidScope</Name>
-          <Condition>requested_scope != "kpi:read"</Condition>
+          <Condition>(requested_scope != "kpi:read") and (requested_scope != "pet:read")</Condition>
         </Step>
         <Step>
           <Name>RF-InvalidGrantOrSecret</Name>
@@ -22,7 +22,7 @@
           <Name>RF-InvalidGrantOrSecret</Name>
           <Condition>verifyapikey.VAK-VerifyClientCredentials.client_secret != requested_client_secret</Condition>
         </Step>
-        <Step><Name>AM-SetSecretKey</Name></Step>
+        <Step><Name>KVM-GetSigningKey</Name></Step>
         <Step><Name>GJ-GenerateJWT</Name></Step>
       </Request>
       <Response>

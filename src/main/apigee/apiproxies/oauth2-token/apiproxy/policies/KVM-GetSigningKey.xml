@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Signing key shared with petstore-v1 (VerifyJWT); it lives in the environment KVM, not in Git. -->
+<KeyValueMapOperations continueOnError="false" enabled="true" name="KVM-GetSigningKey" mapIdentifier="oauth-config">
+  <DisplayName>KVM-GetSigningKey</DisplayName>
+  <ExpiryTimeInSecs>300</ExpiryTimeInSecs>
+  <Get assignTo="private.secretkey">
+    <Key>
+      <Parameter>jwt-signing-key</Parameter>
+    </Key>
+  </Get>
+  <Scope>environment</Scope>
+</KeyValueMapOperations>

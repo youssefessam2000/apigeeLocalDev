@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<RaiseFault continueOnError="false" enabled="true" name="RF-NotFound">
+  <DisplayName>RF-NotFound</DisplayName>
+  <FaultResponse>
+    <AssignVariable>
+      <Name>envelope.errorCode</Name>
+      <Value>404</Value>
+    </AssignVariable>
+    <Set>
+      <StatusCode>404</StatusCode>
+    </Set>
+  </FaultResponse>
+  <IgnoreUnresolvedVariables>true</IgnoreUnresolvedVariables>
+</RaiseFault>

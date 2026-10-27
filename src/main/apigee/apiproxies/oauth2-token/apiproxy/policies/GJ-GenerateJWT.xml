@@ -10,7 +10,8 @@
   <Audience>https://34.102.206.98.nip.io/api/v1/kpis</Audience>
   <Subject>MOT-KPI-Consumer</Subject>
   <AdditionalClaims>
-    <Claim name="scope">kpi:read</Claim>
+    <Claim name="scope" ref="requested_scope"/>
+    <Claim name="client_id" ref="requested_client_id"/>
   </AdditionalClaims>
   <OutputVariable>jwt_token</OutputVariable>
 </GenerateJWT>

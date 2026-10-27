@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<ProxyEndpoint name="default">
+  <PreFlow name="PreFlow">
+    <Request>
+      <Step>
+        <Name>FC-InitTrace</Name>
+      </Step>
+      <Step>
+        <Name>SA-SpikeArrest</Name>
+      </Step>
+      <Step>
+        <Name>KVM-GetSigningKey</Name>
+      </Step>
+      <Step>
+        <Name>VJ-VerifyToken</Name>
+      </Step>
+      <Step>
+        <Name>RF-InsufficientScope</Name>
+        <Condition>!(jwt.VJ-VerifyToken.claim.scope ~~ "(.* )?pet:read( .*)?")</Condition>
+      </Step>
+      <Step>
+        <Name>Q-PetQuota</Name>
+      </Step>
+    </Request>
+    <Response/>
+  </PreFlow>
+  <Flows>
+    <Flow name="GetPetById">
+      <Request>
+        <Step>
+          <Name>EV-ExtractPetId</Name>
+        </Step>
+        <Step>
+          <Name>RF-InvalidPetId</Name>
+          <Condition>!(petId ~~ "[0-9]{1,19}")</Condition>
+        </Step>
+      </Request>
+      <Response/>
+      <Condition>(proxy.pathsuffix MatchesPath "/pets/*") and (request.verb = "GET")</Condition>
+    </Flow>
+    <Flow name="NotFound">
+      <Request>
+        <Step>
+          <Name>RF-NotFound</Name>
+        </Step>
+      </Request>
+      <Response/>
+    </Flow>
+  </Flows>
+  <PostFlow name="PostFlow">
+    <Request/>
+    <Response/>
+  </PostFlow>
+  <!-- Global exception handler: every fault in this endpoint gets the standard error envelope. -->
+  <DefaultFaultRule name="default-fault">
+    <Step>
+      <Name>FC-BuildError</Name>
+      <Condition>envelope.errorHandled != "true"</Condition>
+    </Step>
+    <AlwaysEnforce>true</AlwaysEnforce>
+  </DefaultFaultRule>
+  <HTTPProxyConnection>
+    <BasePath>/petstore/v1</BasePath>
+  </HTTPProxyConnection>
+  <RouteRule name="default">
+    <TargetEndpoint>default</TargetEndpoint>
+  </RouteRule>
+</ProxyEndpoint>
