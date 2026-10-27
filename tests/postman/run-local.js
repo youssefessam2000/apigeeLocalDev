@@ -10,7 +10,7 @@
 const { spawnSync } = require('child_process');
 const path = require('path');
 
-const CONTROL_URL = process.env.EMULATOR_CONTROL_URL || 'http://localhost:8080';
+const CONTROL_URL = process.env.EMULATOR_CONTROL_URL || 'http://localhost:8081';
 const APP_NAME = process.env.EMULATOR_APP_NAME || 'myapp';
 
 const root = path.resolve(__dirname, '..', '..');
