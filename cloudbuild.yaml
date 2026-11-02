@@ -5,6 +5,8 @@
 #
 # No deployment and no secrets: pull request code is not trusted until it is
 # merged. Deployment is in cloudbuild-deploy.yaml (push to main).
+#
+# main is protected by the protect-main ruleset: this build must pass before a PR can merge.
 
 steps:
   - id: install
