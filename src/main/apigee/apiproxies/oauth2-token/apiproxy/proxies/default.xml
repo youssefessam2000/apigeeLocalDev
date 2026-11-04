@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!-- Proxy endpoint: issues signed JWT access tokens for valid client credentials. -->
 <ProxyEndpoint name="default">
   <PreFlow name="PreFlow">
     <Request/>
