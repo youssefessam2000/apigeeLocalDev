@@ -1,4 +1,5 @@
 <!-- helloworld proxy endpoint: API key check, quota, XML to JSON (demo PR test2) -->
+<!-- Demo change for PR: no behaviour change -->
 <ProxyEndpoint name="default">
   <PreFlow name="PreFlow">
     <Request>
