@@ -1,3 +1,4 @@
+<!-- helloworld target: mock XML backend over TLS -->
 <TargetEndpoint name="default">
   <HTTPTargetConnection>
     <SSLInfo>
