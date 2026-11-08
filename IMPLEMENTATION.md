@@ -37,6 +37,7 @@
 9. [Day 3 — Non-Production Deployment & CI](#9-day-3--non-production-deployment--ci)
 10. [Design Notes & Decisions](#10-design-notes--decisions)
 11. [Day 4 — Controlled Deployment, Promotion & Release](#11-day-4--controlled-deployment-promotion--release)
+12. [CI/CD Follow-up Tasks (GCP_CICD_Tasks.xlsx)](#12-cicd-follow-up-tasks-gcp_cicd_tasksxlsx)
 
 ---
 
@@ -84,10 +85,10 @@ myapigeeworkspace/
 │   │   │   └── helloworld/
 │   │   │       └── apiproxy/
 │   │   │           ├── policies/
-│   │   │           │   ├── verify-api-key.xml       # API key validation
+│   │   │           │   ├── VAK-VerifyApiKey.xml      # API key validation (was verify-api-key, 12.2)
 │   │   │           │   ├── AM-RemoveApiKeyParam.xml  # Strip key from upstream
 │   │   │           │   ├── Q-ImposeQuota.xml         # Quota enforcement
-│   │   │           │   └── XMLtoJSON.xml             # Response transformation
+│   │   │           │   └── X2J-ResponseToJson.xml    # Response transformation (was XMLtoJSON, 12.2)
 │   │   │           ├── proxies/
 │   │   │           │   └── default.xml               # Proxy endpoint definition
 │   │   │           └── targets/
@@ -184,6 +185,8 @@ Uses the Apigee mock target which returns a static XML response.
 ---
 
 ### 4.3 Policies
+
+> **Renamed later (12.2):** `verify-api-key` is now `VAK-VerifyApiKey` and `XMLtoJSON` is now `X2J-ResponseToJson`, to satisfy the custom naming rule `EX-PN001`. The listings below show the Day 1 versions.
 
 #### verify-api-key.xml
 Validates the `apikey` query parameter against registered API products.
@@ -396,7 +399,7 @@ Thumbs.db
 ### 5.2 Static Analysis — apigeelint
 
 - **Profile:** `apigeex` (Apigee X rules)
-- **Suppressed rules:** `TD002`, `TD007` (emulator limitations — these rules flag behaviors that differ in local emulator vs production)
+- **Suppressed rules:** `TD002`, `TD007` (emulator limitations — these rules flag behaviors that differ in local emulator vs production). `PO007` was added later, when the custom naming rule `EX-PN001` replaced it (12.2).
 - **Result:** 0 errors, 0 warnings across all 7 files
 - **Baseline report:** `reports/apigeelint-baseline.json`
 
@@ -1808,3 +1811,51 @@ Revision 11 was built by build `d9297e20` from commit `c0849d8` and tested on ev
 
 **Next:** Day 4 task 6 — documentation and release notes (11.6).
 
+---
+
+## 12. CI/CD Follow-up Tasks (GCP_CICD_Tasks.xlsx)
+
+Tasks from the team's follow-up list (`GCP_CICD_Tasks.xlsx`, not committed). Scope: the **helloworld** proxy and its pipelines only, because the other proxies have no Cloud Build triggers.
+
+### 12.1 Unit testing using Mocha ✅ (PR #12, `142aa08`)
+
+**Goal:** unit-test the JavaScript resources and make the tests a pipeline gate. Day 2 marked JS unit tests as N/A; that stopped being true when `petstore-v1` (`map-pet.js`) and the `common-envelope` shared flow (4 scripts) were added.
+
+| Item | Value |
+|------|-------|
+| Tools | Mocha 10.8.2, Chai 4.5.0, c8 10.1.3 (exact versions, same as `petstore-apigee-poc`) |
+| Tests | `tests/unit/petstore-v1.test.js`, `tests/unit/common-envelope.test.js`; `tests/unit/helpers/apigee.js` runs a policy's `IncludeURL` + `ResourceURL` files in one `vm` scope with a mocked `context` |
+| Commands | `npm run test:unit`; `npm run test:unit:coverage` (fails below 90% lines/branches/functions; reports in `reports/coverage/`) |
+| Pipelines | `unit-tests` step after `lint` in `cloudbuild.yaml` (PR) and `cloudbuild-deploy.yaml`; the deploy build copies `cobertura-coverage.xml` next to the bundle in Cloud Storage. Same step in the manual `ci.yml`. |
+| Result | 31 passing; 100% lines, 98% branches, 100% functions |
+| Gate check | Removing the `null` fallback for `status` in `map-pet.js` → exit 2; restored → exit 0 |
+| PR build | `helloworld-pr` build `40b6f17d`: install ✅ lint ✅ **unit-tests ✅** package ✅ (≈1 min 20 s) |
+
+**Note:** these scripts belong to `petstore-v1` and `common-envelope`, which no pipeline deploys yet; helloworld itself has no JavaScript. The tests are kept because they cost ~2 s per build and are ready when those bundles get pipelines.
+
+### 12.2 apigeelint custom rule ✅
+
+**Goal:** add a team rule to apigeelint and make it fail the build.
+
+**Why this rule:** the built-in `PO007` (policy naming) is only a warning, ignores case and accepts loose prefixes such as `verify` and `xmltojson`. Two helloworld policies, `verify-api-key` and `XMLtoJSON`, passed it although they did not follow the `AM-` / `Q-` style of the other two (the convention introduced in 8.1).
+
+**Rule `EX-PN001`** — `apigeelint-rules/EX-PN001-policyNamePrefix.js`, loaded with `-x apigeelint-rules`:
+
+| Case | Result |
+|------|--------|
+| Name is `<PREFIX>-<PascalCaseName>` with the prefix for its type (`AM`, `Q`, `VAK`, `X2J`, `RF`, `KVM`, …) | ✅ pass |
+| Wrong or missing prefix, wrong case (`am-`), `_` instead of `-`, name part not PascalCase, no name | ❌ **error** — lint exits 1 |
+| Policy type with no prefix in `TYPE_PREFIXES` | ⚠️ warning — add the prefix to the rule |
+
+apigeelint only loads external files named `EX-` + two upper-case letters + three digits (`EX-PN001-…js`).
+
+**Steps and results:**
+
+| # | Step | Result |
+|---|------|--------|
+| 1 | Added the rule and `-x apigeelint-rules` to `lint` and `lint:report` | ❌ **Red:** 2 errors — `verify-api-key` must start with `VAK-`, `XMLtoJSON` must start with `X2J-`; exit 1 |
+| 2 | Renamed `verify-api-key` → `VAK-VerifyApiKey` and `XMLtoJSON` → `X2J-ResponseToJson` (file, `name`, `DisplayName`, flow steps) | 0 errors, 1 warning: `PO007` does not accept `VAK-` |
+| 3 | Excluded `PO007` (`-e TD002,TD007,PO007`): `EX-PN001` covers it and is stricter; this is the replacement pattern the apigeelint README describes. `VAK-` is already the team prefix (`oauth2-token` uses `VAK-VerifyClientCredentials`). | ✅ **Green:** 0 errors, 0 warnings (table and JSON report) |
+| 4 | Unit tests for the rule: `tests/unit/lint-rules.test.js` (9 tests, fake `Policy` object); the rule file is included in the c8 coverage gate | 40 passing; rule 100% covered |
+
+**Watch out — Quota references:** `Q-ImposeQuota` reads its limits from flow variables named after the VerifyAPIKey policy (`verifyapikey.<policy name>.apiproduct.developer.quota.*`). They were updated to `verifyapikey.VAK-VerifyApiKey.…`. Had they been missed, nothing would fail: the quota would silently fall back to `count="2000"` per month instead of the product's 100 per minute.

@@ -3,7 +3,7 @@
   <PreFlow name="PreFlow">
     <Request>
       <Step>
-        <Name>verify-api-key</Name>
+        <Name>VAK-VerifyApiKey</Name>
       </Step>
       <Step>
         <Name>AM-RemoveApiKeyParam</Name>
@@ -14,7 +14,7 @@
     </Request>
     <Response>
       <Step>
-        <Name>XMLtoJSON</Name>
+        <Name>X2J-ResponseToJson</Name>
       </Step>
     </Response>
   </PreFlow>

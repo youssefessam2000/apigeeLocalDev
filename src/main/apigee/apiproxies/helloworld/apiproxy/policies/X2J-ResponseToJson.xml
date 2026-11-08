@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
-<XMLToJSON async="false" continueOnError="false" enabled="true" name="XMLtoJSON">
-    <DisplayName>XMLtoJSON</DisplayName>
+<XMLToJSON async="false" continueOnError="false" enabled="true" name="X2J-ResponseToJson">
+    <DisplayName>X2J-ResponseToJson</DisplayName>
     <Properties/>
     <Format>yahoo</Format>
     <OutputVariable>response</OutputVariable>

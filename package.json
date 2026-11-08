@@ -4,11 +4,11 @@
   "description": "Apigee hello-world proxy with CI/CD quality gates",
   "private": true,
   "scripts": {
-    "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f table.js",
+    "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -x apigeelint-rules -e TD002,TD007,PO007 -f table.js",
     "prelint:report": "node -e \"require('fs').mkdirSync('reports',{recursive:true})\"",
-    "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f json.js > reports/apigeelint-baseline.json",
+    "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -x apigeelint-rules -e TD002,TD007,PO007 -f json.js > reports/apigeelint-baseline.json",
     "test:unit": "mocha \"tests/unit/**/*.test.js\"",
-    "test:unit:coverage": "c8 --all --src src/main/apigee --include \"src/main/apigee/**/*.js\" --check-coverage --lines 90 --branches 90 --functions 90 --reporter text --reporter html --reporter cobertura --reports-dir reports/coverage mocha --reporter dot \"tests/unit/**/*.test.js\"",
+    "test:unit:coverage": "c8 --all --src src/main/apigee --src apigeelint-rules --include \"src/main/apigee/**/*.js\" --include \"apigeelint-rules/**/*.js\" --check-coverage --lines 90 --branches 90 --functions 90 --reporter text --reporter html --reporter cobertura --reports-dir reports/coverage mocha --reporter dot \"tests/unit/**/*.test.js\"",
     "test:api:local": "node tests/postman/run-local.js",
     "test:api:eval": "node tests/postman/run-cloud.js eval",
     "test": "npm run lint && npm run test:unit && npm run test:api:local"
