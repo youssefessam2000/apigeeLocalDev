@@ -43,6 +43,9 @@ jobs:
         if: always()
         run: npm run lint:report
 
+      - name: Unit tests with coverage gate (mocha + c8)
+        run: npm run test:unit:coverage
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

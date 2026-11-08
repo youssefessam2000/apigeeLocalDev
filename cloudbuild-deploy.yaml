@@ -1,7 +1,8 @@
 # Cloud Build — build, deploy and test the helloworld Apigee proxy.
 #
 # Trigger: helloworld-deploy (push to main; .md/.csv-only changes are ignored)
-#   install -> lint -> package -> store bundle in Cloud Storage
+#   install -> lint -> unit tests (with coverage gate) -> package
+#   -> store bundle, lint report and coverage report in Cloud Storage
 #   -> deploy the stored bundle with the Apigee Maven plugin
 #   -> API tests (Newman) against the deployed proxy -> store test reports
 #      (JUnit XML + readable HTML) next to the bundle
@@ -26,6 +27,13 @@ steps:
     name: node:22
     entrypoint: npm
     args: ['run', 'lint:report']
+
+  # Mocha unit tests for the JavaScript resources; fails if a test fails or
+  # line/branch/function coverage drops below 90%.
+  - id: unit-tests
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'test:unit:coverage']
 
   - id: package
     name: maven:3.9.9-eclipse-temurin-17
@@ -66,6 +74,7 @@ steps:
       - 'target/helloworld-1.0.0.zip'
       - 'target/build-info.json'
       - 'reports/apigeelint-baseline.json'
+      - 'reports/coverage/cobertura-coverage.xml'
       - 'gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/'
 
   # Short-lived token of the build's service account, kept in a workspace file

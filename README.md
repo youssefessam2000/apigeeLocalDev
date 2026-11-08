@@ -123,13 +123,24 @@ npm run test:api:local
 
 Output: `reports/newman-local.xml` (JUnit format)
 
+### Run JavaScript unit tests (Mocha)
+
+```bash
+npm run test:unit            # mocha + chai, no emulator needed
+npm run test:unit:coverage   # same under c8; fails below 90% line/branch/function coverage
+```
+
+The tests in `tests/unit/` cover every `jsc/*.js` resource: `map-pet.js` (petstore-v1) and `envelope-header.js`, `init-trace.js`, `build-success.js`, `build-error.js` (common-envelope shared flow). `tests/unit/helpers/apigee.js` runs a policy's files the way the JavaScript policy does (`IncludeURL` files first, then the `ResourceURL`, in one scope) against a mocked `context` whose flow variables are a plain object, so cases that are hard to reach through the API (timeouts, unknown faults, a backend body that is not JSON) are tested in milliseconds. Changing a JS resource means updating its unit test.
+
+Coverage output: `reports/coverage/` (text summary, `index.html`, `cobertura-coverage.xml`).
+
 ### Run all quality gates
 
 ```bash
 npm test
 ```
 
-This runs lint first, then the Newman test suite. The command exits non-zero if either step fails.
+This runs lint, then the unit tests, then the Newman test suite. The command exits non-zero if any step fails.
 
 ---
 
@@ -139,7 +150,7 @@ This runs lint first, then the Newman test suite. The command exits non-zero if 
 |------|------|-----------|
 | Static analysis | apigeelint | Zero errors (exit code 0) |
 | Functional tests | Newman | All assertions pass (exit code 0) |
-| JS unit tests | N/A | No JS resources in this proxy |
+| JS unit tests | Mocha + Chai, c8 | All tests pass; ≥ 90% line, branch and function coverage of `jsc/*.js` |
 
 **Pipeline rule:** Any gate failure must stop the build. Do not suppress failures without a documented reason.
 
@@ -196,6 +207,7 @@ myapigeeworkspace/
 │   │   │   └── targets/           # Target endpoint config
 │   │   └── environments/dev/      # Environment-level config
 │   └── tests/mytestbundle/        # Local test data (product, developer, app)
+├── tests/unit/                    # Mocha unit tests for the JavaScript resources
 ├── tests/postman/
 │   ├── hello.postman_collection.json   # Postman collection (happy + negative tests)
 │   └── env/
