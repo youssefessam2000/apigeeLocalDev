@@ -1,3 +1,4 @@
+<!-- Target endpoint: forwards helloworld requests to the Apigee mock XML backend over enforced TLS. -->
 <TargetEndpoint name="default">
   <HTTPTargetConnection>
     <SSLInfo>
