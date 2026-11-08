@@ -7,9 +7,11 @@
     "lint": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f table.js",
     "prelint:report": "node -e \"require('fs').mkdirSync('reports',{recursive:true})\"",
     "lint:report": "apigeelint -s src/main/apigee/apiproxies/helloworld/apiproxy --profile apigeex -e TD002,TD007 -f json.js > reports/apigeelint-baseline.json",
+    "test:unit": "mocha \"tests/unit/**/*.test.js\"",
+    "test:unit:coverage": "c8 --all --src src/main/apigee --include \"src/main/apigee/**/*.js\" --check-coverage --lines 90 --branches 90 --functions 90 --reporter text --reporter html --reporter cobertura --reports-dir reports/coverage mocha --reporter dot \"tests/unit/**/*.test.js\"",
     "test:api:local": "node tests/postman/run-local.js",
     "test:api:eval": "node tests/postman/run-cloud.js eval",
-    "test": "npm run lint && npm run test:api:local"
+    "test": "npm run lint && npm run test:unit && npm run test:api:local"
   },
   "repository": {
     "type": "git",
@@ -23,6 +25,9 @@
   "homepage": "https://github.com/youssefessam2000/apigeeLocalDev#readme",
   "devDependencies": {
     "apigeelint": "2.85.1",
+    "c8": "10.1.3",
+    "chai": "4.5.0",
+    "mocha": "10.8.2",
     "newman": "6.2.3",
     "newman-reporter-htmlextra": "1.23.1"
   }

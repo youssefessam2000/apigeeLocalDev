@@ -1,7 +1,7 @@
 # Cloud Build — pull request validation for the helloworld Apigee proxy.
 #
 # Trigger: helloworld-pr (pull requests to main; .md/.csv-only changes are ignored)
-#   install -> lint -> package
+#   install -> lint -> unit tests (with coverage gate) -> package
 #
 # No deployment and no secrets: pull request code is not trusted until it is
 # merged. Deployment is in cloudbuild-deploy.yaml (push to main).
@@ -18,6 +18,13 @@ steps:
     name: node:22
     entrypoint: npm
     args: ['run', 'lint']
+
+  # Mocha unit tests for the JavaScript resources; fails if a test fails or
+  # line/branch/function coverage drops below 90%.
+  - id: unit-tests
+    name: node:22
+    entrypoint: npm
+    args: ['run', 'test:unit:coverage']
 
   # Builds target/helloworld-1.0.0.zip to prove the bundle packages.
   - id: package
