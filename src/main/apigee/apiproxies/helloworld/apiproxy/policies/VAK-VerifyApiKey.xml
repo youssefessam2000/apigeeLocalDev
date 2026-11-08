@@ -1,0 +1,4 @@
+<VerifyAPIKey async="false" continueOnError="false" enabled="true" name="VAK-VerifyApiKey">
+    <DisplayName>VAK-VerifyApiKey</DisplayName>
+    <APIKey ref="request.queryparam.apikey"/>
+</VerifyAPIKey>

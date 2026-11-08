@@ -34,14 +34,14 @@ npm install
 | Method | `GET` |
 | Auth | API key via `?apikey=<key>` query param |
 | Target | `https://mocktarget.apigee.net/xml` (mock) |
-| Response | JSON (XML target response transformed by XMLtoJSON policy) |
+| Response | JSON (XML target response transformed by X2J-ResponseToJson policy) |
 | Quota | 100 requests/minute per API product |
 
 ### Policies applied (PreFlow)
-1. **verify-api-key** — validates `?apikey` query param
+1. **VAK-VerifyApiKey** — validates `?apikey` query param
 2. **AM-RemoveApiKeyParam** — strips the API key from the upstream request
 3. **Q-ImposeQuota** — enforces quota defined on the API product
-4. **XMLtoJSON** (Response) — converts the mock XML response to JSON
+4. **X2J-ResponseToJson** (Response) — converts the mock XML response to JSON
 
 ---
 
@@ -103,7 +103,16 @@ Expected response: `401 Unauthorized`
 npm run lint
 ```
 
-Runs `apigeelint` against the proxy bundle using the `apigeex` profile. Rules `TD002` and `TD007` are suppressed (emulator limitations).
+Runs `apigeelint` against the proxy bundle using the `apigeex` profile, plus the team's custom rules in `apigeelint-rules/` (loaded with `-x`). Excluded rules:
+
+| Rule | Why |
+|------|-----|
+| `TD002`, `TD007` | Emulator limitations |
+| `PO007` (built-in naming, warning) | Replaced by the stricter custom rule `EX-PN001`; PO007 does not know the team prefixes such as `VAK-` |
+
+**Custom rule `EX-PN001` — policy naming (error):** every policy name must be `<PREFIX>-<PascalCaseName>`, with the exact upper-case prefix for its type, e.g. `AM-RemoveApiKeyParam`, `Q-ImposeQuota`, `VAK-VerifyApiKey`, `X2J-ResponseToJson`. The prefixes are listed in `TYPE_PREFIXES` in `apigeelint-rules/EX-PN001-policyNamePrefix.js`; a policy type that is not listed gets a warning asking you to add its prefix. The rule's own tests are in `tests/unit/lint-rules.test.js`.
+
+To add another rule: create `apigeelint-rules/EX-XX000-<name>.js` (apigeelint only loads files named `EX-` + two upper-case letters + three digits) exporting `plugin` and a handler such as `onPolicy`, and add tests for it in `tests/unit/`.
 
 ### Generate lint report
 
@@ -148,7 +157,7 @@ This runs lint, then the unit tests, then the Newman test suite. The command exi
 
 | Gate | Tool | Threshold |
 |------|------|-----------|
-| Static analysis | apigeelint | Zero errors (exit code 0) |
+| Static analysis | apigeelint + custom rules in `apigeelint-rules/` | Zero errors (exit code 0) |
 | Functional tests | Newman | All assertions pass (exit code 0) |
 | JS unit tests | Mocha + Chai, c8 | All tests pass; ≥ 90% line, branch and function coverage of `jsc/*.js` |
 
@@ -207,7 +216,8 @@ myapigeeworkspace/
 │   │   │   └── targets/           # Target endpoint config
 │   │   └── environments/dev/      # Environment-level config
 │   └── tests/mytestbundle/        # Local test data (product, developer, app)
-├── tests/unit/                    # Mocha unit tests for the JavaScript resources
+├── apigeelint-rules/             # Custom apigeelint rules (EX-PN001 policy naming)
+├── tests/unit/                    # Mocha unit tests for the JavaScript resources and lint rules
 ├── tests/postman/
 │   ├── hello.postman_collection.json   # Postman collection (happy + negative tests)
 │   └── env/
