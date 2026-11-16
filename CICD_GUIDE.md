@@ -161,13 +161,18 @@ options:
 | 1 | `install` | `npm ci` |
 | 2 | `lint` | `npm run lint` (quality gate) |
 | 3 | `lint-report` | `npm run lint:report` |
-| 4 | `package` | `mvn package -P nonprod` → `target/helloworld-1.0.0.zip` |
-| 5 | `build-info` | writes `target/build-info.json` (commit, build ID, time) |
-| 6 | `store-bundle` | `gcloud storage cp` zip + info + lint report → `gs://<bucket>/helloworld/$COMMIT_SHA/` |
-| 7 | `get-token` | `gcloud auth print-access-token > /workspace/.apigee-token` |
-| 8 | `deploy` | reads + deletes the token file, `mvn -P nonprod apigee-enterprise:deploy` |
-| 9 | `api-tests` | `node tests/postman/run-cloud.js eval` with `secretEnv: ['APIGEE_APIKEY']`; writes XML + HTML reports; saves exit code |
-| 10 | `store-report` | copies `newman-eval.xml` + `newman-eval.html` to the bucket, prints the report link, exits with the test exit code (quality gate) |
+| 4 | `unit-tests` | `npm run test:unit:coverage` (Mocha, fails below 90% coverage) |
+| 5 | `package` | `mvn package -P nonprod` → `target/helloworld-1.0.0.zip` |
+| 6 | `build-info` | writes `target/build-info.json` (commit, build ID, time) |
+| 7 | `store-bundle` | `gcloud storage cp` zip + info + lint/coverage reports → `gs://<bucket>/helloworld/$COMMIT_SHA/` |
+| 8 | `record-previous` | saves the revision live in the environment before this build (empty on a first deploy) |
+| 9 | `get-token` | `gcloud auth print-access-token > /workspace/.apigee-token` |
+| 10 | `deploy` | reads + deletes the token file, `mvn -P nonprod apigee-enterprise:deploy`; saves exit code (does not fail the step) |
+| 11 | `api-tests` | skipped if the deploy failed; else `node tests/postman/run-cloud.js eval` with `secretEnv: ['APIGEE_APIKEY']`; writes XML + HTML reports; saves exit code |
+| 12 | `store-report` | copies `newman-eval.xml` + `newman-eval.html` to the bucket, prints the report link |
+| 13 | `rollback` | deploy + tests passed → build passes. Otherwise redeploys the recorded revision (or undeploys the new one on a first deploy), waits for `READY`, stores `rollback-info.json`, fails the build (quality gate). Exit 2 = rollback itself failed |
+
+Tested end to end in `IMPLEMENTATION.md` §12.3.
 
 Plus:
 
@@ -189,6 +194,8 @@ options:
 | Every substitution you set on a trigger must be used in the YAML | Default `MUST_MATCH` mode fails the build otherwise |
 | Mask the key in Newman output **and report files** | Cloud Build does **not** hide secrets in logs; Newman prints `?apikey=<key>` URLs (issue 8.17) and the reports contain them too. `run-cloud.js` replaces the key with `***` everywhere |
 | Do not run `mvn clean` in steps that need the zip | It deletes `target/` |
+| Do not use `python3` in `cloud-sdk:slim` steps | It is no longer on `PATH` in that image (issue 8.18); parse JSON with `grep`/`sed` or a `gcloud --format` |
+| A failing step stops the build — later steps do not run | To run clean-up such as a rollback after a failure, save the exit code in a file and let a last step decide (see `rollback`) |
 
 Commit and push the files to a **branch** (not `main` yet) — Part 6 tests them through a PR.
 
