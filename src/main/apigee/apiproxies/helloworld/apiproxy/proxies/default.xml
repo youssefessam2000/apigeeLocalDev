@@ -6,7 +6,7 @@
         <Name>VAK-VerifyApiKey</Name>
       </Step>
       <Step>
-        <Name>AM-RemoveApiKeyParam</Name>
+        <Name>removeApiKeyParam</Name>
       </Step>
       <Step>
         <Name>Q-ImposeQuota</Name>

@@ -1,5 +1,5 @@
-<AssignMessage async="false" continueOnError="false" enabled="true" name="AM-RemoveApiKeyParam">
-    <DisplayName>AM-RemoveApiKeyParam</DisplayName>
+<AssignMessage async="false" continueOnError="false" enabled="true" name="removeApiKeyParam">
+    <DisplayName>removeApiKeyParam</DisplayName>
     <Remove>
         <QueryParams>
             <QueryParam name="apikey"/>
