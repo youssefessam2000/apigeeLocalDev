@@ -761,6 +761,25 @@ The leaked value in build `a6b473c6`'s log is now a revoked key. Secret version 
 
 ---
 
+### 8.18 `python3: command not found` in the deploy pipeline (rollback steps)
+
+**Issue:** The first `helloworld-deploy` build after the rollback steps were merged (build `327c293c`, PR #15) failed at step 7 `record-previous`:
+
+```
+Already have image (with digest): gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+bash: line 5: python3: command not found
+```
+
+**Root cause:** The new steps parsed the Apigee API's JSON with `python3 -c '…'`, copied from `cloudbuild-promote.yaml`. The current `cloud-sdk:slim` image no longer puts `python3` on `PATH` (gcloud uses its own bundled Python). `helloworld-promote` passed with the same code in October, so the image changed after that; the promote pipeline would have failed the same way on its next run.
+
+**Impact:** None on `eval`. The step runs before `deploy`, so nothing was deployed and revision 17 stayed live. Every push to `main` would have failed until the fix.
+
+**Solution:** PR #16 (`fad6366`) reads the values with `grep` and `sed` in both `cloudbuild-deploy.yaml` and `cloudbuild-promote.yaml`. `{ grep … || true; }` keeps an empty response (first deploy, no deployments) from failing a `set -euo pipefail` step. Tested against the live API before pushing (live revision `17`, state `READY`, empty `{}` → empty, two revisions → `18 17`); then verified in build `8b05b4f0` (rollback step: "no rollback needed").
+
+**Lesson:** Do not rely on tools that a floating image tag (`:slim`) happens to contain. Use what the step installs or what the image is guaranteed to have, and test new shell steps against the real API before merging.
+
+---
+
 ## 9. Day 3 — Non-Production Deployment & CI
 
 **Target:** Apigee X evaluation org `project-953dc129-1db1-4aea-ae3`, environment **`eval`** (`https://8.228.239.128.nip.io`). Staging (`stagin`) is postponed until its TLS certificate is fixed (see 8.11). Switching later only changes `APIGEE_ENV` and the test base URL.
@@ -1859,3 +1878,90 @@ apigeelint only loads external files named `EX-` + two upper-case letters + thre
 | 4 | Unit tests for the rule: `tests/unit/lint-rules.test.js` (9 tests, fake `Policy` object); the rule file is included in the c8 coverage gate | 40 passing; rule 100% covered |
 
 **Watch out — Quota references:** `Q-ImposeQuota` reads its limits from flow variables named after the VerifyAPIKey policy (`verifyapikey.<policy name>.apiproduct.developer.quota.*`). They were updated to `verifyapikey.VAK-VerifyApiKey.…`. Had they been missed, nothing would fail: the quota would silently fall back to `count="2000"` per month instead of the product's 100 per minute.
+
+### 12.3 Test pipeline failure scenarios + automatic rollback ✅
+
+**Goal:** make each pipeline fail on purpose, confirm how the failure is detected and reported, and make sure a failure after deployment does not leave a broken proxy live.
+
+#### Scenario A — PR pipeline (`helloworld-pr`) fails on lint
+
+| Item | Value |
+|------|-------|
+| Change | PR #14 (`ci-fail-test/policy-name`): renamed `AM-RemoveApiKeyParam` → `removeApiKeyParam` (file, `name`, `DisplayName`, flow step), so only the naming rule breaks |
+| Local check | `npm run lint` → exit 1: `EX-PN001 Policy "removeApiKeyParam" (AssignMessage) must start with "AM-"` |
+| Build | `helloworld-pr` `c7cbc26a`: install ✅ **lint ❌** — unit-tests and package did not run |
+| Effect | The PR check is red and the `protect-main` ruleset blocks the merge. Nothing is built or deployed. |
+| Clean-up | PR closed without merging, branch deleted |
+
+#### Rollback in the deploy pipeline (PR #15, fix in PR #16)
+
+Cloud Build has no "on failure" hook: when a step fails, the remaining steps do not run. So the steps that can fail after something is live **record** their result instead of failing, and a last step decides:
+
+| # | Step | What it does |
+|---|------|--------------|
+| 1–7 | `install` … `store-bundle` | Unchanged (lint, unit tests, package, store bundle). A failure here stops the build **before** anything is deployed, so there is nothing to roll back. |
+| 8 | `record-previous` *(new)* | Asks the Apigee API which revision is live in `eval` and saves it to `/workspace/previous-revision` (empty on a first deploy) |
+| 9 | `get-token` | Unchanged |
+| 10 | `deploy` | Deploys the stored bundle; saves the exit code to `/workspace/deploy-exit-code` instead of failing the step |
+| 11 | `api-tests` | Skipped if the deploy failed; otherwise runs Newman and saves its exit code (as before) |
+| 12 | `store-report` | Copies the reports to the bucket if they exist; no longer fails the build |
+| 13 | `rollback` *(new)* | Both exit codes 0 → "no rollback needed", build passes. Otherwise: redeploys the previous revision with `override=true` (or **undeploys** the new one if nothing was live before), waits until it is `READY`, writes `rollback-info.json` next to the bundle, then **fails the build** (exit 1) |
+
+**What "rollback" covers:** only the deployment in `eval` — the one thing the pipeline changes that callers see. Steps 1–7 change nothing live. The bundle, lint/coverage/test reports and `rollback-info.json` stay in Cloud Storage as evidence, and the failed revision stays in the org (undeployed) so it can be inspected. If the rollback itself fails, the step prints `ROLLBACK FAILED: …` and exits **2**; then redeploy the previous revision by hand (Apigee → API proxies → helloworld → Deploy).
+
+**Not covered — configuration rollback:** the pipelines deploy only the proxy bundle. No KVMs, target servers, API products or apps are deployed (helloworld's backend URL is in the proxy; `src/main/apigee/environments/dev` is for the local emulator), so there is no configuration to roll back. That would first need configuration deployment (e.g. `apigee-config-maven-plugin`), then a snapshot before deploy and a restore on failure.
+
+#### Scenario B — deploy pipeline (`helloworld-deploy`) fails after deployment → rollback
+
+The failure has to pass the PR check, otherwise it never reaches `main`. A wrong backend URL does: lint and unit tests cannot see it.
+
+| Item | Value |
+|------|-------|
+| Change | PR #18 (`ci-fail-test/deploy-rollback`, merged as `74e3998`): target URL `https://mocktarget.apigee.net/xml` → `https://mocktarget.apigee.net/does-not-exist` |
+| PR build | `helloworld-pr` `4942cdd9`: ✅ all steps — the merge was allowed |
+| Deploy build | `helloworld-deploy` `37904f01` (approved, ~9 min) |
+
+| Step | Result |
+|------|--------|
+| 1–7 | ✅ |
+| `record-previous` | `Live in eval before this build: revision 18` |
+| `deploy` | `Deploy exit code: 0` — **revision 19** (broken) live |
+| `api-tests` | 3 requests, 8 assertions, **3 failed** — `GET /helloworld?apikey=***` → **404 Not Found**: "expected response to have status code 200 but got 404", "expected 'text/html; charset=utf-8' to include 'application/json'", "Unexpected token '<'". The two 401 tests passed: the proxy rejects a missing/invalid key before it calls the backend. |
+| `store-report` | `Newman exit code: 1`; reports stored |
+| `rollback` | `FAILED (deploy exit 0, API tests exit 1)` → `Live now: 19; before this build: 18` → revision 18 `PROGRESSING`, `PROGRESSING`, `READY` → `Rolled back. Live in eval: 18. Failing the build.` ❌ (exit 1, by design) |
+
+`rollback-info.json` in `gs://<bucket>/helloworld/74e39981…/`:
+
+```json
+{
+  "build_id": "37904f01-5bb6-402b-a587-f7f85160b9db",
+  "commit": "74e39981a467811707bf6f78d0fd7cf51ea36ac7",
+  "deploy_exit_code": 0,
+  "api_tests_exit_code": 1,
+  "failed_revision": "19",
+  "restored_revision": "18",
+  "rolled_back_at": "2026-11-16T17:58:32Z"
+}
+```
+
+Checked independently with the Apigee API afterwards: `eval` serves **revision 18**. Revision 19 exists but is not deployed.
+
+**The rollback restores `eval`, not Git.** `main` still contains the broken URL after the test, so every later push would deploy and roll back again. Recovery is a revert PR of `74e3998`; its deploy creates a new revision with the correct URL, the tests pass, and that revision becomes live.
+
+#### How to check whether a build failed and rolled back
+
+| Where | What to look for |
+|-------|------------------|
+| Cloud Build → History (region `us-west1`) → build | Failed with only `rollback` red = deployed, tests failed, rolled back. `api-tests` log shows which assertions failed; `rollback` log shows `Live now / before this build` and `Rolled back. Live in eval: N` |
+| Apigee → API proxies → helloworld → Overview | `eval` shows the previous revision deployed |
+| `gs://<bucket>/helloworld/<commit>/` | `rollback-info.json`, plus the Newman HTML report |
+| Exit code of `rollback` | **1** = rolled back successfully; **2** = rollback failed, fix by hand |
+
+```bash
+gcloud builds describe <BUILD_ID> --region=us-west1 --format="table(steps.id,steps.status)"
+gcloud builds log <BUILD_ID> --region=us-west1 | grep -E "Live|FAILED|Rolled back|state"
+gcloud apigee deployments list --api=helloworld --environment=eval --organization=<org>
+gcloud storage cat gs://<bucket>/helloworld/<commit>/rollback-info.json
+```
+
+Issue found on the way: 8.18 (`python3` missing from `cloud-sdk:slim`).
