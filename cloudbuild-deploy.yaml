@@ -3,9 +3,12 @@
 # Trigger: helloworld-deploy (push to main; .md/.csv-only changes are ignored)
 #   install -> lint -> unit tests (with coverage gate) -> package
 #   -> store bundle, lint report and coverage report in Cloud Storage
+#   -> record the revision live before this build
 #   -> deploy the stored bundle with the Apigee Maven plugin
 #   -> API tests (Newman) against the deployed proxy -> store test reports
 #      (JUnit XML + readable HTML) next to the bundle
+#   -> rollback: if the deploy or the API tests failed, restore the previous
+#      revision (or undeploy it on a first deploy) and fail the build
 #
 # Runs as cloudbuild-apigee-deployer. The access token comes from the build's
 # own identity (no keys); the API key comes from Secret Manager. Neither is
@@ -77,6 +80,22 @@ steps:
       - 'reports/coverage/cobertura-coverage.xml'
       - 'gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/'
 
+  # Remembers what is live before this build changes anything, so a failed
+  # deploy or failed API tests can be rolled back to it. Empty = first deploy.
+  - id: record-previous
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        TOKEN="$$(gcloud auth print-access-token)"
+        curl -sf -H "Authorization: Bearer $$TOKEN" \
+          "https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}/environments/${_APIGEE_ENV}/apis/${_PROXY}/deployments" \
+          | python3 -c 'import sys, json; d = json.load(sys.stdin).get("deployments", []); print(d[0]["revision"] if d else "")' \
+          > /workspace/previous-revision
+        echo "Live in ${_APIGEE_ENV} before this build: revision $$(cat /workspace/previous-revision)"
+
   # Short-lived token of the build's service account, kept in a workspace file
   # (never printed) and deleted by the deploy step.
   - id: get-token
@@ -85,6 +104,8 @@ steps:
     args: ['-c', 'gcloud auth print-access-token > /workspace/.apigee-token']
 
   # Runs only the deploy goal, so the stored zip is deployed as-is (no rebuild).
+  # The result is recorded instead of failing the step, so the rollback step
+  # still runs when the deployment fails.
   - id: deploy
     name: maven:3.9.9-eclipse-temurin-17
     entrypoint: bash
@@ -94,18 +115,25 @@ steps:
         export APIGEE_TOKEN="$$(cat /workspace/.apigee-token)"
         rm -f /workspace/.apigee-token
         mvn -B -P nonprod apigee-enterprise:deploy
+        echo $$? > /workspace/deploy-exit-code
+        echo "Deploy exit code: $$(cat /workspace/deploy-exit-code)"
     env:
       - 'APIGEE_ORG=${_APIGEE_ORG}'
       - 'APIGEE_ENV=${_APIGEE_ENV}'
 
-  # The test result is saved and the step always succeeds, so the report is
-  # stored even when tests fail; store-report then fails the build.
+  # Skipped when the deploy failed. The result is saved and the step always
+  # succeeds, so the reports are stored and the rollback step decides the outcome.
   - id: api-tests
     name: node:22
     entrypoint: bash
     args:
       - '-c'
       - |
+        if [ "$$(cat /workspace/deploy-exit-code)" != "0" ]; then
+          echo "Deploy failed; API tests skipped."
+          echo 1 > reports/newman-exit-code
+          exit 0
+        fi
         node tests/postman/run-cloud.js ${_APIGEE_ENV}
         echo $$? > reports/newman-exit-code
     env:
@@ -118,11 +146,83 @@ steps:
     args:
       - '-c'
       - |
-        gcloud storage cp reports/newman-${_APIGEE_ENV}.xml reports/newman-${_APIGEE_ENV}.html gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/
-        echo "Test report (HTML): https://storage.cloud.google.com/${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/newman-${_APIGEE_ENV}.html"
-        code="$$(cat reports/newman-exit-code)"
-        echo "Newman exit code: $$code"
-        exit "$$code"
+        if [ -f reports/newman-${_APIGEE_ENV}.xml ]; then
+          gcloud storage cp reports/newman-${_APIGEE_ENV}.xml reports/newman-${_APIGEE_ENV}.html gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/
+          echo "Test report (HTML): https://storage.cloud.google.com/${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/newman-${_APIGEE_ENV}.html"
+        fi
+        echo "Newman exit code: $$(cat reports/newman-exit-code)"
+
+  # Last step. If the deploy or the API tests failed, puts the environment back
+  # the way it was before this build: redeploys the previous revision
+  # (override=true swaps it in place of the new one), or undeploys the new
+  # revision when nothing was deployed before. Then fails the build.
+  # The earlier steps changed nothing live: the bundle and reports in Cloud
+  # Storage are kept as evidence, and the failed revision stays in the org
+  # (undeployed) for debugging.
+  - id: rollback
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk:slim
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -uo pipefail
+        DEPLOY_CODE="$$(cat /workspace/deploy-exit-code)"
+        TEST_CODE="$$(cat reports/newman-exit-code)"
+        if [ "$$DEPLOY_CODE" = "0" ] && [ "$$TEST_CODE" = "0" ]; then
+          echo "Deploy and API tests passed; no rollback needed."
+          exit 0
+        fi
+        echo "FAILED (deploy exit $$DEPLOY_CODE, API tests exit $$TEST_CODE): rolling back ${_PROXY} in ${_APIGEE_ENV}."
+
+        PREV="$$(cat /workspace/previous-revision)"
+        TOKEN="$$(gcloud auth print-access-token)"
+        API="https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}/environments/${_APIGEE_ENV}/apis/${_PROXY}"
+        live() {
+          curl -sf -H "Authorization: Bearer $$TOKEN" "$$API/deployments" \
+            | python3 -c 'import sys, json; print(" ".join(d["revision"] for d in json.load(sys.stdin).get("deployments", [])))'
+        }
+        NOW="$$(live)"
+        echo "Live now: $${NOW:-none}; before this build: $${PREV:-none}"
+
+        if [ -n "$$PREV" ]; then
+          if [ "$$NOW" != "$$PREV" ]; then
+            curl -sf -X POST -H "Authorization: Bearer $$TOKEN" \
+              "$$API/revisions/$$PREV/deployments?override=true" > /dev/null \
+              || { echo "ROLLBACK FAILED: could not redeploy revision $$PREV."; exit 2; }
+          fi
+          STATE=""
+          for i in $$(seq 1 40); do
+            STATE="$$(curl -sf -H "Authorization: Bearer $$TOKEN" "$$API/revisions/$$PREV/deployments" \
+              | python3 -c 'import sys, json; print(json.load(sys.stdin).get("state", ""))')"
+            echo "Revision $$PREV state: $$STATE"
+            [ "$$STATE" = "READY" ] && break
+            [ "$$STATE" = "ERROR" ] && { echo "ROLLBACK FAILED: revision $$PREV is in ERROR."; exit 2; }
+            sleep 15
+          done
+          [ "$$STATE" = "READY" ] || { echo "ROLLBACK FAILED: revision $$PREV did not become READY."; exit 2; }
+        else
+          for REV in $$NOW; do
+            echo "Nothing was deployed before; undeploying revision $$REV."
+            curl -sf -X DELETE -H "Authorization: Bearer $$TOKEN" "$$API/revisions/$$REV/deployments" > /dev/null \
+              || { echo "ROLLBACK FAILED: could not undeploy revision $$REV."; exit 2; }
+          done
+        fi
+
+        cat > /workspace/rollback-info.json <<EOF
+        {
+          "build_id": "$BUILD_ID",
+          "commit": "$COMMIT_SHA",
+          "deploy_exit_code": $$DEPLOY_CODE,
+          "api_tests_exit_code": $$TEST_CODE,
+          "failed_revision": "$$NOW",
+          "restored_revision": "$$PREV",
+          "rolled_back_at": "$$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        }
+        EOF
+        cat /workspace/rollback-info.json
+        gcloud storage cp /workspace/rollback-info.json gs://${_BUNDLE_BUCKET}/helloworld/$COMMIT_SHA/ || true
+        echo "Rolled back. Live in ${_APIGEE_ENV}: $$(live). Failing the build."
+        exit 1
 
 availableSecrets:
   secretManager:
@@ -132,6 +232,7 @@ availableSecrets:
 substitutions:
   _APIGEE_ORG: project-953dc129-1db1-4aea-ae3
   _APIGEE_ENV: eval
+  _PROXY: helloworld
   _APIGEE_BASE_URL: https://8.228.239.128.nip.io
   _BUNDLE_BUCKET: project-953dc129-1db1-4aea-ae3-apigee-bundles
   _APIKEY_SECRET: apigee-helloworld-apikey
