@@ -21,7 +21,7 @@ steps:
         API="https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}"
         DEPLOYED="$$(curl -sf -H "Authorization: Bearer $$TOKEN" \
           "$$API/environments/${_FROM_ENV}/apis/${_PROXY}/deployments" \
-          | python3 -c 'import sys, json; print(" ".join(d["revision"] for d in json.load(sys.stdin).get("deployments", [])))')"
+          | { grep -o '"revision": *"[0-9]*"' || true; } | sed 's/[^0-9]//g' | tr '\n' ' ' | sed 's/ *$$//')"
         echo "Deployed in ${_FROM_ENV}: $${DEPLOYED:-none}"
         REV="${_REVISION}"
         if [ -z "$$REV" ]; then REV="$${DEPLOYED%% *}"; fi
@@ -46,7 +46,7 @@ steps:
         curl -sf -X POST -H "Authorization: Bearer $$TOKEN" "$$URL?override=true" > /dev/null
         for i in $$(seq 1 40); do
           STATE="$$(curl -sf -H "Authorization: Bearer $$TOKEN" "$$URL" \
-            | python3 -c 'import sys, json; print(json.load(sys.stdin).get("state", ""))')"
+            | { grep -o '"state": *"[A-Z_]*"' || true; } | head -1 | sed 's/.*"\([A-Z_]*\)"$$/\1/')"
           echo "Deployment state: $$STATE"
           [ "$$STATE" = "READY" ] && exit 0
           [ "$$STATE" = "ERROR" ] && exit 1
