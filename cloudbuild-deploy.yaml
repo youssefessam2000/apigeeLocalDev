@@ -92,7 +92,7 @@ steps:
         TOKEN="$$(gcloud auth print-access-token)"
         curl -sf -H "Authorization: Bearer $$TOKEN" \
           "https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}/environments/${_APIGEE_ENV}/apis/${_PROXY}/deployments" \
-          | python3 -c 'import sys, json; d = json.load(sys.stdin).get("deployments", []); print(d[0]["revision"] if d else "")' \
+          | { grep -o '"revision": *"[0-9]*"' || true; } | head -1 | sed 's/[^0-9]//g' \
           > /workspace/previous-revision
         echo "Live in ${_APIGEE_ENV} before this build: revision $$(cat /workspace/previous-revision)"
 
@@ -179,7 +179,7 @@ steps:
         API="https://apigee.googleapis.com/v1/organizations/${_APIGEE_ORG}/environments/${_APIGEE_ENV}/apis/${_PROXY}"
         live() {
           curl -sf -H "Authorization: Bearer $$TOKEN" "$$API/deployments" \
-            | python3 -c 'import sys, json; print(" ".join(d["revision"] for d in json.load(sys.stdin).get("deployments", [])))'
+            | { grep -o '"revision": *"[0-9]*"' || true; } | sed 's/[^0-9]//g' | tr '\n' ' ' | sed 's/ *$$//'
         }
         NOW="$$(live)"
         echo "Live now: $${NOW:-none}; before this build: $${PREV:-none}"
@@ -193,7 +193,7 @@ steps:
           STATE=""
           for i in $$(seq 1 40); do
             STATE="$$(curl -sf -H "Authorization: Bearer $$TOKEN" "$$API/revisions/$$PREV/deployments" \
-              | python3 -c 'import sys, json; print(json.load(sys.stdin).get("state", ""))')"
+              | { grep -o '"state": *"[A-Z_]*"' || true; } | head -1 | sed 's/.*"\([A-Z_]*\)"$$/\1/')"
             echo "Revision $$PREV state: $$STATE"
             [ "$$STATE" = "READY" ] && break
             [ "$$STATE" = "ERROR" ] && { echo "ROLLBACK FAILED: revision $$PREV is in ERROR."; exit 2; }
