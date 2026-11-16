@@ -5,6 +5,6 @@
       <Enabled>true</Enabled>
       <Enforce>true</Enforce>
     </SSLInfo>
-    <URL>https://mocktarget.apigee.net/xml</URL>
+    <URL>https://mocktarget.apigee.net/does-not-exist</URL>
   </HTTPTargetConnection>
 </TargetEndpoint>
